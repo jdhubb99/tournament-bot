@@ -1,5 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import { championEmbed, liveMatchEmbed, matchResultEmbed, resultLine, seriesUpdateEmbed, signupEmbed } from "./embeds.ts";
+import {
+  bracketEmbed,
+  championEmbed,
+  historyEmbed,
+  liveMatchEmbed,
+  matchResultEmbed,
+  resultLine,
+  seriesUpdateEmbed,
+  signupEmbed,
+} from "./embeds.ts";
 
 describe("signupEmbed", () => {
   const base = { semisBestOf: 1, finalBestOf: 3, maxPlayers: 8 };
@@ -120,5 +129,25 @@ describe("championEmbed", () => {
       { name: "Runner-up", value: "Benny" },
       { name: "Results", value: "Semifinal 1: **Jake** def. A (3–1)\nFinal: **Jake** def. Benny (2–1)" },
     ]);
+  });
+});
+
+describe("bracketEmbed", () => {
+  it("shows only the sections that have something in them", () => {
+    const full = bracketEmbed({ title: "T", live: "**Final**", upNext: ["x", "y"], results: ["r"] }).toJSON();
+    expect(full.title).toBe("T");
+    expect(full.fields).toEqual([
+      { name: "🔴 Live", value: "**Final**" },
+      { name: "Up next", value: "x\ny" },
+      { name: "Results", value: "r" },
+    ]);
+    expect(bracketEmbed({ title: "T", live: null, upNext: [], results: [] }).toJSON().fields).toBeUndefined();
+  });
+});
+
+describe("historyEmbed", () => {
+  it("lists tournaments or says there are none", () => {
+    expect(historyEmbed(["one", "two"]).toJSON()).toMatchObject({ title: "Tournament history", description: "one\ntwo" });
+    expect(historyEmbed([]).toJSON().description).toBe("No finished tournaments yet.");
   });
 });

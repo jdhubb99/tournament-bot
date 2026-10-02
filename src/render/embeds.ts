@@ -118,3 +118,20 @@ export function championEmbed(opts: { champion: EmbedPlayer; runnerUpName: strin
       { name: "Results", value: opts.results.join("\n") },
     );
 }
+
+/** /bracket: what's live, what's queued, and what's been played. Empty sections are left out. */
+export function bracketEmbed(opts: { title: string; live: string | null; upNext: string[]; results: string[] }): EmbedBuilder {
+  const embed = new EmbedBuilder().setColor(BLURPLE).setTitle(opts.title);
+  if (opts.live) embed.addFields({ name: "🔴 Live", value: opts.live });
+  if (opts.upNext.length) embed.addFields({ name: "Up next", value: opts.upNext.join("\n") });
+  if (opts.results.length) embed.addFields({ name: "Results", value: opts.results.join("\n") });
+  return embed;
+}
+
+/** /history: one line per finished tournament, newest first. */
+export function historyEmbed(lines: string[]): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(GOLD)
+    .setTitle("Tournament history")
+    .setDescription(lines.length ? lines.join("\n") : "No finished tournaments yet.");
+}
