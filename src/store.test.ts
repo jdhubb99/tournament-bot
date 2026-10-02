@@ -50,6 +50,14 @@ describe("tournaments", () => {
     expect(store.getOpenTournament("g")).toBeNull();
   });
 
+  it("cancels a tournament so it no longer counts as open", () => {
+    const id = store.createTournament("g", lengths);
+    store.cancelTournament(id);
+    expect(store.getTournament(id)?.status).toBe("cancelled");
+    expect(db.query("SELECT finished_at IS NOT NULL AS done FROM tournaments WHERE id = $id").get({ id })).toEqual({ done: 1 });
+    expect(store.getOpenTournament("g")).toBeNull();
+  });
+
   it("adds each player once and lists them in join order", () => {
     const id = signup("g", ["c", "a", "b"]);
     expect(store.addTournamentPlayer(id, "a")).toBe(false);

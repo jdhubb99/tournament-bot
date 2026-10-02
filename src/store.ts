@@ -135,3 +135,10 @@ export function getLiveMatch(tournamentId: number): Match | null {
     .query<Match, { t: number }>("SELECT * FROM matches WHERE tournament_id = $t AND status = 'live'")
     .get({ t: tournamentId });
 }
+
+/** Ends a signup or active tournament without a winner. Its matches and games are kept as they were. */
+export function cancelTournament(tournamentId: number): void {
+  db.query("UPDATE tournaments SET status = 'cancelled', finished_at = datetime('now') WHERE id = $id").run({
+    id: tournamentId,
+  });
+}
