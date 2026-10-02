@@ -151,3 +151,56 @@ describe("signup buttons", () => {
     expect(arg(channel.send).files[0].name).toBe("versus.png");
   });
 });
+
+describe("/tournament cancel", () => {
+  async function ask() {
+    const interaction = fakeInteraction({ subcommand: "cancel" });
+    await tournament.execute(cast(interaction));
+    return arg(interaction.reply);
+  }
+
+  it("says when nothing is running", async () => {
+    expect((await ask()).content).toBe("No tournament is running.");
+  });
+
+  it("asks privately for confirmation with cancel and keep buttons", async () => {
+    const id = await startSignup();
+    const message = await ask();
+    expect(message.content).toBe("Cancel the current tournament (in signup)? This can't be undone.");
+    expect(message.flags).toBeDefined();
+    expect(message.components[0].toJSON().components.map((b: { custom_id: string }) => b.custom_id)).toEqual([
+      `tournament:cancel:${id}`,
+      `tournament:keep:${id}`,
+    ]);
+
+    db.query("UPDATE tournaments SET status = 'active' WHERE id = $id").run({ id });
+    expect((await ask()).content).toBe("Cancel the current tournament (in progress)? This can't be undone.");
+  });
+
+  it("keeps the tournament when asked to", async () => {
+    const id = await startSignup();
+    const interaction = await press("keep", id);
+    expect(arg(interaction.update)).toEqual({ content: "Okay, the tournament continues.", components: [] });
+    expect(getTournament(id)?.status).toBe("signup");
+  });
+
+  it("cancels on confirmation and tells the channel", async () => {
+    const id = await startSignup();
+    const interaction = await press("cancel", id, { id: "boss", name: "Boss" });
+    expect(arg(interaction.update)).toEqual({ content: "Cancelled.", components: [] });
+    expect(getTournament(id)?.status).toBe("cancelled");
+    expect(arg(channel.send)).toEqual({
+      content: "🛑 The tournament was cancelled by <@boss>. Run `/tournament start` to begin a new one.",
+      allowedMentions: { parse: [] },
+    });
+  });
+
+  it("does nothing if the tournament already ended", async () => {
+    const id = await startSignup();
+    db.query("UPDATE tournaments SET status = 'done' WHERE id = $id").run({ id });
+    const interaction = await press("cancel", id);
+    expect(arg(interaction.update).content).toBe("That tournament has already ended.");
+    expect(getTournament(id)?.status).toBe("done");
+    expect(arg((await press("cancel", 999)).update).content).toBe("That tournament has already ended.");
+  });
+});
