@@ -325,7 +325,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 - [ ] `game` filter plumbed through queries
 
 ### Phase 8 — Visuals
-- [x] SVG bracket layout for single elim (4 and 8 players, in `render/bracket-image.ts`): match cards with avatars ringed in team colors, seeds, scores, the live match outlined in red, the winning row marked in its team color, and the champion in gold
+- [x] SVG bracket layout for single elim (4 and 8 players, in `render/bracket-image.ts`): match cards with avatars ringed in team colors, seeds, scores (goals as numbers for a best of 1; games won as dots for a best of 3 or 5, with a key under the bracket when it mixes both), the live match outlined in red, the winning row marked in its team color, and the champion in gold
 - [x] PNG conversion, avatars, bundled font
 - [ ] Standings image for round robin (built in phase 5 along with the format)
 - [ ] Edit-in-place bracket message after each match
