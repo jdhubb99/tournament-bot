@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { db } from "../db.ts";
-import { createTournament, listTournamentPlayers } from "../store.ts";
+import { createTournament, getOpenTournament, getTournament, listTournamentPlayers } from "../store.ts";
 import { arg, cast, fakeInteraction, resetDb } from "../test/helpers.ts";
 import { dev } from "./dev.ts";
 import { joinSignup } from "./tournament.ts";
@@ -53,4 +53,37 @@ describe("/dev join", () => {
       "The bot supports up to 8 players, and this tournament is full.",
     );
   });
+});
+
+describe("/dev cancel", () => {
+  async function devCancel() {
+    const interaction = fakeInteraction({ commandName: "dev", subcommand: "cancel" });
+    await dev.execute(cast(interaction));
+    return arg(interaction.reply);
+  }
+
+  it("says when nothing is running", async () => {
+    expect((await devCancel()).content).toBe("No tournament is running.");
+  });
+
+  it("cancels a tournament in signup", async () => {
+    const id = createTournament("guild-1", { semis: 1, final: 3 });
+    const message = await devCancel();
+    expect(message.content).toBe(`Cancelled tournament #${id}. You can run \`/tournament start\` again.`);
+    expect(message.flags).toBeDefined();
+    expect(getTournament(id)?.status).toBe("cancelled");
+  });
+
+  it("cancels an active tournament so a new one can start", async () => {
+    const id = createTournament("guild-1", { semis: 1, final: 3 });
+    db.query("UPDATE tournaments SET status = 'active' WHERE id = $id").run({ id });
+    await devCancel();
+    expect(getOpenTournament("guild-1")).toBeNull();
+  });
+});
+
+it("does nothing for an unknown /dev subcommand", async () => {
+  const interaction = fakeInteraction({ commandName: "dev", subcommand: "nope" });
+  await dev.execute(cast(interaction));
+  expect(interaction.reply).not.toHaveBeenCalled();
 });
