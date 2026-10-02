@@ -285,10 +285,10 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 **Done when:** four people can join, start, and see Semi 1 go live.
 
 ### Phase 3 — Reporting and series
-- [ ] `/report` with validation and `reported_by`
-- [ ] Series logic (Bo1/3/5), match close, bracket advancement
-- [ ] "Up next" announcements, champion crowned after final
-- [ ] Unit tests (`bun test`) for `bracket.ts` and `series.ts`
+- [x] `/report` with validation and `reported_by`
+- [x] Series logic (Bo1/3/5), match close, bracket advancement
+- [x] "Up next" announcements, champion crowned after final
+- [x] Unit tests (`bun test`) for `bracket.ts`, `series.ts` and `queue.ts`
 
 **Done when:** a full 4-player tournament can be played end to end.
 
