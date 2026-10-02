@@ -274,6 +274,19 @@ describe("round robin posts", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(10); // five avatars, twice
   });
 
+  it("lists the league matches still to play while the league runs", async () => {
+    const { playLeagueMatch } = await import("./test/helpers.ts");
+    const id = startedRoundRobin();
+    const height = async () => new DataView(((await bracketImage(id)).attachment as Buffer).buffer).getUint32(20);
+    const withList = await height(); // 10 left: 4 listed plus "+6 more"
+    for (let i = 0; i < 7; i++) playLeagueMatch(id);
+    const shorter = await height(); // 3 left, all listed
+    for (let i = 0; i < 3; i++) playLeagueMatch(id);
+    const none = await height(); // league done; the final is on the right instead
+    expect(withList).toBeGreaterThan(shorter);
+    expect(shorter).toBeGreaterThan(none);
+  });
+
   it("announces the end of the league with the table", async () => {
     const id = startedRoundRobin();
     playLeague(id);

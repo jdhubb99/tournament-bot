@@ -20,7 +20,7 @@ import {
   WINNER_FILE,
 } from "./render/match-images.ts";
 import { BRACKET_FILE, renderBracketImage, type BracketMatch, type BracketSlot } from "./render/bracket-image.ts";
-import { renderStandingsImage } from "./render/standings-image.ts";
+import { renderStandingsImage, type UpcomingMatch } from "./render/standings-image.ts";
 import { getTournament, leagueStandings, listGames, listMatches, listTournamentPlayers, type Match } from "./store.ts";
 import { playerName, resultLineFor, runnerUpOf, slotPlaceholder } from "./views.ts";
 
@@ -201,9 +201,27 @@ export async function bracketImage(tournamentId: number): Promise<AttachmentBuil
         })),
         card(matches.at(-1)!),
         champion,
+        upNextInLeague(matches),
       )
     : renderBracketImage(matches.map(card), champion);
   return new AttachmentBuilder(Buffer.from(png), { name: BRACKET_FILE });
+}
+
+/** How many upcoming league matches the standings image lists before "+N more". */
+const UP_NEXT_SHOWN = 4;
+
+/** The live league match and the next ones in play order, for the standings image. */
+function upNextInLeague(matches: readonly Match[]): { matches: UpcomingMatch[]; more: number } {
+  const remaining = matches.slice(0, -1).filter((m) => m.status !== "done");
+  return {
+    matches: remaining.slice(0, UP_NEXT_SHOWN).map((m) => ({
+      label: m.label,
+      p1: playerName(m.p1_id!),
+      p2: playerName(m.p2_id!),
+      live: m.status === "live",
+    })),
+    more: Math.max(0, remaining.length - UP_NEXT_SHOWN),
+  };
 }
 
 /** Round robin: when the league ends, posts the final table and who goes to the final. */

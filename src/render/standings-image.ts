@@ -9,6 +9,7 @@ import {
   DIM,
   DIVIDER,
   GOLD,
+  LIVE_RED,
   matchCard,
   MUTED,
   PAD,
@@ -36,6 +37,17 @@ const HEADER_H = 40;
 const ROW_H = 52;
 const KEY_H = 40;
 const QUALIFY = 2;
+const UP_NEXT_HEADER_H = 44;
+const UP_NEXT_LINE_H = 34;
+const UP_NEXT_PAD = 10;
+
+/** A league match still to play, for the "Up next" list under the table. */
+export interface UpcomingMatch {
+  label: string;
+  p1: string;
+  p2: string;
+  live: boolean;
+}
 
 /** Column x positions (relative to the table's left edge) for the numeric columns. */
 const COLUMNS = [
@@ -61,12 +73,16 @@ export function renderStandingsImage(
   rows: readonly StandingsImageRow[],
   final: BracketMatch,
   champion: BracketChampion | null,
+  upNext: { matches: readonly UpcomingMatch[]; more: number } = { matches: [], more: 0 },
 ): Uint8Array {
   const x = PAD;
   const top = PAD + HEADER_H;
   const tableH = rows.length * ROW_H;
   const width = PAD + TABLE_W + COL_GAP + CARD_W + COL_GAP + CHAMPION_W + PAD;
-  const height = top + tableH + KEY_H + PAD;
+  const keyBottom = top + tableH + KEY_H;
+  const upNextLines = upNext.matches.length + (upNext.more > 0 ? 1 : 0);
+  const upNextH = upNext.matches.length ? UP_NEXT_HEADER_H + upNextLines * UP_NEXT_LINE_H + UP_NEXT_PAD * 2 : 0;
+  const height = keyBottom + upNextH + PAD;
   const parts: string[] = [];
 
   parts.push(text(x, top - 14, "League", { size: 20, fill: MUTED }));
@@ -91,6 +107,21 @@ export function renderStandingsImage(
   });
 
   parts.push(text(x, top + tableH + KEY_H - 10, "Gold: top 2, who play the final", { size: 20, fill: MUTED }));
+
+  // League matches still to play, on a card like the table so the text reads in light and dark
+  // themes: the live one (red dot), then the next few in play order, then "+N more".
+  if (upNext.matches.length) {
+    const cardTop = keyBottom + UP_NEXT_HEADER_H;
+    parts.push(text(x, cardTop - 14, "Up next", { size: 20, fill: MUTED }));
+    parts.push(`<rect x="${x}" y="${cardTop}" width="${TABLE_W}" height="${upNextLines * UP_NEXT_LINE_H + UP_NEXT_PAD * 2}" rx="8" fill="${CARD}"/>`);
+    const lineY = (i: number) => cardTop + UP_NEXT_PAD + i * UP_NEXT_LINE_H + 23;
+    upNext.matches.forEach((m, i) => {
+      if (m.live) parts.push(`<circle cx="${x + 22}" cy="${lineY(i) - 8}" r="5" fill="${LIVE_RED}"/>`);
+      parts.push(text(x + 36, lineY(i), m.label, { size: 24, fill: m.live ? LIVE_RED : MUTED }));
+      parts.push(text(x + 150, lineY(i), `${truncate(m.p1, 16)}  vs  ${truncate(m.p2, 16)}`, { size: 24, fill: TEXT }));
+    });
+    if (upNext.more > 0) parts.push(text(x + 36, lineY(upNext.matches.length), `+${upNext.more} more`, { size: 22, fill: MUTED }));
+  }
 
   // The final, level with the middle of the table, then the champion.
   const finalX = x + TABLE_W + COL_GAP;

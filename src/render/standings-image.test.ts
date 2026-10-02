@@ -51,3 +51,24 @@ describe("renderStandingsImage", () => {
     expect(same(even, ahead) || same(even, behind) || same(ahead, behind)).toBe(false);
   });
 });
+
+describe("up next list", () => {
+  const upcoming = (n: number) =>
+    [...Array(n)].map((_, i) => ({ label: `Match ${i + 5}`, p1: "A", p2: "B", live: i === 0 }));
+
+  it("adds a card under the table with a line per match, plus one for '+N more'", () => {
+    // 420 without the list; the list adds a 44px header, 34px per line and 20px of padding.
+    expect(size(renderStandingsImage(rows, emptyFinal, null, { matches: upcoming(2), more: 0 })).height).toBe(420 + 44 + 2 * 34 + 20);
+    expect(size(renderStandingsImage(rows, emptyFinal, null, { matches: upcoming(4), more: 3 })).height).toBe(420 + 44 + 5 * 34 + 20);
+  });
+
+  it("leaves the list out when nothing is left to play", () => {
+    expect(size(renderStandingsImage(rows, emptyFinal, null, { matches: [], more: 0 })).height).toBe(420);
+  });
+
+  it("marks the live match differently from the rest", () => {
+    const live = renderStandingsImage(rows, emptyFinal, null, { matches: upcoming(1), more: 0 });
+    const waiting = renderStandingsImage(rows, emptyFinal, null, { matches: [{ ...upcoming(1)[0]!, live: false }], more: 0 });
+    expect(same(live, waiting)).toBe(false);
+  });
+});

@@ -50,7 +50,7 @@ export const CONNECTOR = "#80848e";
 export const MUTED = "#949ba4";
 export const DIM = "#6d6f78";
 export const TEXT = "#f2f3f5";
-const LIVE_RED = "#ed4245";
+export const LIVE_RED = "#ed4245";
 export const GOLD = "#d4af37";
 
 /** Player names are user input, so escape them before putting them in SVG. */
