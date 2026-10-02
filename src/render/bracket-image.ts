@@ -32,41 +32,41 @@ export interface BracketChampion {
   avatar: Uint8Array | null;
 }
 
-const PAD = 40;
+export const PAD = 40;
 const SEED_W = 34;
-const CARD_W = 300;
+export const CARD_W = 300;
 const ROW_H = 46;
-const CARD_H = ROW_H * 2;
-const LABEL_H = 28;
+export const CARD_H = ROW_H * 2;
+export const LABEL_H = 28;
 const ROUND_ONE_GAP = 36;
-const COL_GAP = 70;
-const CHAMPION_W = 200;
-const AVATAR_R = 15;
+export const COL_GAP = 70;
+export const CHAMPION_W = 200;
+export const AVATAR_R = 15;
 const KEY_H = 40;
 
-const CARD = "#2b2d31";
-const DIVIDER = "#3f4147";
-const CONNECTOR = "#80848e";
-const MUTED = "#949ba4";
-const DIM = "#6d6f78";
-const TEXT = "#f2f3f5";
+export const CARD = "#2b2d31";
+export const DIVIDER = "#3f4147";
+export const CONNECTOR = "#80848e";
+export const MUTED = "#949ba4";
+export const DIM = "#6d6f78";
+export const TEXT = "#f2f3f5";
 const LIVE_RED = "#ed4245";
-const GOLD = "#d4af37";
+export const GOLD = "#d4af37";
 
 /** Player names are user input, so escape them before putting them in SVG. */
 export function escapeXml(text: string): string {
   return text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[c]!);
 }
 
-function truncate(text: string, max: number): string {
+export function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-function text(x: number, y: number, value: string, opts: { size: number; fill: string; anchor?: string }): string {
+export function text(x: number, y: number, value: string, opts: { size: number; fill: string; anchor?: string }): string {
   return `<text x="${x}" y="${y}" font-family="Bebas Neue" font-size="${opts.size}" fill="${opts.fill}" text-anchor="${opts.anchor ?? "start"}">${escapeXml(value)}</text>`;
 }
 
-function avatarCircle(id: string, cx: number, cy: number, r: number, avatar: Uint8Array | null, ring: string, width: number): string {
+export function avatarCircle(id: string, cx: number, cy: number, r: number, avatar: Uint8Array | null, ring: string, width: number): string {
   const picture = avatar
     ? `<clipPath id="${id}"><circle cx="${cx}" cy="${cy}" r="${r}"/></clipPath>
        <image href="data:image/png;base64,${Buffer.from(avatar).toString("base64")}" x="${cx - r}" y="${cy - r}" width="${r * 2}" height="${r * 2}" clip-path="url(#${id})"/>`
@@ -106,7 +106,8 @@ function row(slot: BracketSlot, bestOf: number, x: number, y: number, id: string
   return parts.join("");
 }
 
-function card(match: BracketMatch, x: number, cy: number, id: string, firstRound: boolean): string {
+/** One match: label above, a card with two player rows, outlined in red while live. */
+export function matchCard(match: BracketMatch, x: number, cy: number, id: string, firstRound: boolean): string {
   const y = cy - CARD_H / 2;
   const live = match.status === "live";
   const label = `${match.label} · Bo${match.bestOf}`;
@@ -117,6 +118,22 @@ function card(match: BracketMatch, x: number, cy: number, id: string, firstRound
     <line x1="${x}" y1="${cy}" x2="${x + CARD_W}" y2="${cy}" stroke="${DIVIDER}" stroke-width="2"/>
     ${row(match.p1, match.bestOf, x, y, `${id}a`, firstRound, match.status === "done")}
     ${row(match.p2, match.bestOf, x, cy, `${id}b`, firstRound, match.status === "done")}`;
+}
+
+/** The champion's avatar ringed in gold with their name, or a dashed "?" until there is one. Centered on (cx, cy). */
+export function championBadge(cx: number, cy: number, champion: BracketChampion | null): string {
+  if (champion) {
+    return (
+      avatarCircle("champion", cx, cy - 10, 56, champion.avatar, GOLD, 6) +
+      text(cx, cy - 80, "Champion", { size: 26, fill: GOLD, anchor: "middle" }) +
+      text(cx, cy + 82, truncate(champion.name, 14), { size: 28, fill: GOLD, anchor: "middle" })
+    );
+  }
+  return (
+    `<circle cx="${cx}" cy="${cy - 10}" r="56" fill="none" stroke="${DIM}" stroke-width="4" stroke-dasharray="10 8"/>` +
+    text(cx, cy + 2, "?", { size: 48, fill: DIM, anchor: "middle" }) +
+    text(cx, cy + 82, "Champion", { size: 26, fill: DIM, anchor: "middle" })
+  );
 }
 
 /** Splits single-elim matches (in plan order: round 1, then round 2, ...) into rounds. */
@@ -157,7 +174,7 @@ export function renderBracketImage(matches: readonly BracketMatch[], champion: B
   rounds.forEach((round, r) => {
     round.forEach((match, i) => {
       const cy = centers[r]![i]!;
-      parts.push(card(match, columnX(r), cy, `m${r}-${i}`, r === 0));
+      parts.push(matchCard(match, columnX(r), cy, `m${r}-${i}`, r === 0));
       // Connector into the next round (or to the champion from the final).
       const fromX = columnX(r) + CARD_W;
       const midX = fromX + COL_GAP / 2;
@@ -170,17 +187,7 @@ export function renderBracketImage(matches: readonly BracketMatch[], champion: B
     });
   });
 
-  const finalY = centers.at(-1)![0]!;
-  const cx = columnX(rounds.length) + CHAMPION_W / 2 - 20;
-  if (champion) {
-    parts.push(avatarCircle("champion", cx, finalY - 10, 56, champion.avatar, GOLD, 6));
-    parts.push(text(cx, finalY - 80, "Champion", { size: 26, fill: GOLD, anchor: "middle" }));
-    parts.push(text(cx, finalY + 82, truncate(champion.name, 14), { size: 28, fill: GOLD, anchor: "middle" }));
-  } else {
-    parts.push(`<circle cx="${cx}" cy="${finalY - 10}" r="56" fill="none" stroke="${DIM}" stroke-width="4" stroke-dasharray="10 8"/>`);
-    parts.push(text(cx, finalY + 2, "?", { size: 48, fill: DIM, anchor: "middle" }));
-    parts.push(text(cx, finalY + 82, "Champion", { size: 26, fill: DIM, anchor: "middle" }));
-  }
+  parts.push(championBadge(columnX(rounds.length) + CHAMPION_W / 2 - 20, centers.at(-1)![0]!, champion));
 
   if (mixed) {
     const keyY = bracketBottom + KEY_H - 8;
