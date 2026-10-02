@@ -148,7 +148,8 @@ Match status: `pending` → `live` → `done`.
 - If that game had closed a match, the match reopens and any advancement is reverted.
 - If it had ended the tournament, the tournament returns to active.
 - If it was the last league or group match, the playoff players filled from standings are cleared again (the final or semis go back to waiting).
-- Only works on the active tournament.
+- Works on the guild's newest tournament while it's active, or after it has finished as long as no newer tournament has been started, so a wrong final report can still be fixed.
+- Everything the game caused is reversed: a match that went live after it goes back to waiting (its team coin flip is cleared), and the undo is posted publicly.
 
 ### Tournament channel
 
@@ -232,7 +233,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 | Command | What it does |
 |---|---|
 | `/tournament start [semis] [final]` | Open signup with Join/Start buttons |
-| `/tournament cancel` | Cancel the active tournament |
+| `/tournament cancel` | Cancel the active tournament (asks the person for private confirmation first, then announces it in the channel) |
 | `/report winner winner_score loser_score` | Record a game in the live match |
 | `/undo` | Remove the last reported game |
 | `/bracket` | Show live match, upcoming queue, results so far (round robin and groups: also current standings) |
@@ -295,9 +296,9 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 **Done when:** a full 4-player tournament can be played end to end.
 
 ### Phase 4 — Views and corrections
-- [ ] `/bracket`, `/history`
-- [ ] `/undo` with reopen and revert logic
-- [ ] `/tournament cancel`
+- [x] `/bracket`, `/history`
+- [x] `/undo` with reopen and revert logic
+- [x] `/tournament cancel`
 
 ### Phase 5 — Round robin
 - [ ] Circle-method schedule with back-to-back avoidance

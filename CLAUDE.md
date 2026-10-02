@@ -61,7 +61,7 @@ Once a piece of work (for example a phase) is finished, commit it and open a PR:
 
 ## Architecture rules
 
-- Layers: `src/logic/` (pure rules), `src/store.ts` (all SQL), `src/render/` (embeds/images; images are SVG rendered to PNG with resvg and the bundled font in `assets/fonts/`), `src/announce.ts` (posts to the channel), `src/commands/` (Discord handlers that tie these together), `src/bot.ts` (client setup and interaction routing), `src/channel.ts` (startup check and the shared `#tournaments` channel).
+- Layers: `src/logic/` (pure rules), `src/store.ts` (all SQL), `src/render/` (embeds/images; images are SVG rendered to PNG with resvg and the bundled font in `assets/fonts/`), `src/announce.ts` (posts to the channel), `src/views.ts` (text lines for matches and tournaments, shared by `/bracket`, `/history` and the champion post), `src/commands/` (Discord handlers that tie these together), `src/bot.ts` (client setup and interaction routing), `src/channel.ts` (startup check and the shared `#tournaments` channel).
 - **`src/logic/` is pure.** It never imports discord.js or `db.ts`. Bracket, round-robin, series, stats, and random logic take plain data and return plain data, so `bun test` runs without a bot. Commands in `src/commands/` load from the DB, call logic, write the results, and render with `src/render/`.
 - Tests sit next to the code they test as `*.test.ts`.
 - **Matches form an ordered queue, not parallel rounds.** Each match has a `play_order`. At most one match per tournament is `live`. A match goes live only after the previous series is decided and both of its players are known. Status runs `pending` → `live` → `done`.
