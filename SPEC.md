@@ -74,6 +74,8 @@ Rule: everything in `logic/` is pure (no Discord or database imports) so it can 
 | 8 | Single elimination | 7 (4 quarters, 2 semis, final) |
 | 9+ | Not supported: Join is capped at 8 | n/a |
 
+Single elimination is shown to players as "Knockout".
+
 Everyone who joins plays. The goal is to keep every tournament at roughly 12 matches or fewer, since matches are played one at a time.
 
 ### Series length
@@ -237,7 +239,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 | `/report winner winner_score loser_score` | Record a game in the live match |
 | `/undo` | Remove the last reported game |
 | `/bracket` | Bracket image (live match, queue, results, champion) plus the live match as text. Shows the last finished tournament when none is running (round robin and groups: a standings image instead) |
-| `/history` | Past tournaments: date, format, winner, runner-up |
+| `/history` | Past tournaments, newest first, two lines each: "**#4** · date and time · Knockout, 4 players, semis Bo1" then "🏆 **Jegson** (2nd title) beat Jako 2–1 in the final (Bo3)". A best-of-1 final shows goals, longer finals show games won |
 | `/leaderboard` | Titles, series record, game record, goal differential |
 | `/stats @player` | Personal stats and head-to-head records |
 | `/pick count options` | Random picker |
