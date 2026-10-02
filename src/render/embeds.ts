@@ -45,10 +45,10 @@ export function liveMatchEmbed(opts: { label: string; bestOf: number; p1: EmbedP
 }
 
 /** A series still in progress after a game: red stripe, the standing, and the attached scoreboard image. */
-export function seriesUpdateEmbed(opts: { label: string; gameNumber: number; standing: string }): EmbedBuilder {
+export function seriesUpdateEmbed(opts: { title: string; standing: string }): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(LIVE_RED)
-    .setTitle(`${opts.label} — Game ${opts.gameNumber}`)
+    .setTitle(opts.title)
     .setDescription(opts.standing)
     .setImage(`attachment://${SCOREBOARD_FILE}`);
 }

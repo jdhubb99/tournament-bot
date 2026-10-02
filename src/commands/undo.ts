@@ -1,4 +1,5 @@
 import { SlashCommandBuilder } from "discord.js";
+import { currentMatchPost } from "../announce.ts";
 import { describeSeries } from "../logic/series.ts";
 import { getUndoableTournament, undoLastGame } from "../store.ts";
 import { playerName } from "../views.ts";
@@ -26,7 +27,16 @@ export const undo: Command = {
       lines.push(`${match.label} is live again.${paused}`);
     }
     if (match.best_of > 1) lines.push(describeSeries(series, p1, p2));
-    // Public, like reports, so everyone sees the correction.
-    await interaction.reply({ content: lines.join("\n"), allowedMentions: { parse: [] } });
+
+    // Public, like reports, so everyone sees the correction. The picture shows the match
+    // as it stands now (versus image, or the scoreboard if games remain), like other live posts.
+    await interaction.deferReply();
+    const post = await currentMatchPost(match);
+    await interaction.editReply({
+      content: lines.join("\n"),
+      embeds: [post.embed],
+      files: [post.file],
+      allowedMentions: { parse: [] },
+    });
   },
 };

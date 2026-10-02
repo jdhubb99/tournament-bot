@@ -1,16 +1,20 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { getLiveMatch, getTournament, recordGame } from "../store.ts";
-import { arg, cast, fakeInteraction, resetDb, startedTournament } from "../test/helpers.ts";
+import { arg, cast, fakeInteraction, resetDb, startedTournament, useFakeChannel } from "../test/helpers.ts";
 import { undo } from "./undo.ts";
 
-beforeEach(resetDb);
+beforeEach(() => {
+  resetDb();
+  useFakeChannel();
+});
 
 const live = (id: number) => getLiveMatch(id)!;
 
+/** Runs /undo and returns its message: the direct reply, or the edited reply after deferring. */
 async function run() {
   const interaction = fakeInteraction({ commandName: "undo" });
   await undo.execute(cast(interaction));
-  return arg(interaction.reply);
+  return interaction.editReply.mock.calls.length ? arg(interaction.editReply) : arg(interaction.reply);
 }
 
 describe("/undo", () => {
@@ -33,14 +37,20 @@ describe("/undo", () => {
     const message = await run();
     expect(message.content).toBe("↩️ Removed game 2 of Semifinal 1 (A 0 – 2 B).\nA leads the series 1–0");
     expect(message.allowedMentions).toEqual({ parse: [] });
+    // Games remain, so it shows the corrected scoreboard.
+    expect(message.embeds[0].toJSON().title).toBe("Semifinal 1 — Live");
+    expect(message.files.map((f: { name: string }) => f.name)).toEqual(["scoreboard.png"]);
   });
 
   it("reopens a decided match and pauses the one that went live after it", async () => {
     const id = startedTournament();
     recordGame(live(id), 3, 1, "r", "goons");
-    expect((await run()).content).toBe(
+    const message = await run();
+    expect(message.content).toBe(
       "↩️ Removed game 1 of Semifinal 1 (A 3 – 1 B).\nSemifinal 1 is live again. Semifinal 2 is back to waiting.",
     );
+    // No games left, so it shows the versus image again.
+    expect(message.files.map((f: { name: string }) => f.name)).toEqual(["versus.png"]);
     expect(live(id).label).toBe("Semifinal 1");
   });
 

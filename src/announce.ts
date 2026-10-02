@@ -43,24 +43,43 @@ export async function fetchAvatar(url: string): Promise<Uint8Array | null> {
   }
 }
 
-/** Posts the live match embed with the team-colored versus image, pinging only its two players (nobody in dev mode). */
+type Post = { embed: EmbedBuilder; file: AttachmentBuilder };
+
+/** The red live embed with the team-colored versus image, for a match with no games yet. */
+async function versusPost(match: Match): Promise<Post> {
+  const [p1, p2] = await Promise.all([embedPlayer(match.p1_id!), embedPlayer(match.p2_id!)]);
+  const [p1Avatar, p2Avatar] = await Promise.all([fetchAvatar(p1.avatarUrl), fetchAvatar(p2.avatarUrl)]);
+  const png = renderVersusImage(
+    { avatar: p1Avatar, team: teamIn(match, p1.id) },
+    { avatar: p2Avatar, team: teamIn(match, p2.id) },
+  );
+  return {
+    embed: liveMatchEmbed({ label: match.label, bestOf: match.best_of, p1, p2 }),
+    file: new AttachmentBuilder(Buffer.from(png), { name: VERSUS_FILE }),
+  };
+}
+
+/** Posts "Up next" with the versus image, pinging only its two players (nobody in dev mode). */
 export async function announceLiveMatch(match: Match): Promise<void> {
   if (!match.p1_id || !match.p2_id) throw new Error(`Match ${match.id} went live without both players`);
   if (!match.p1_team) throw new Error(`Match ${match.id} went live without teams`);
-  const [p1, p2] = await Promise.all([embedPlayer(match.p1_id), embedPlayer(match.p2_id)]);
-  const [p1Avatar, p2Avatar] = await Promise.all([fetchAvatar(p1.avatarUrl), fetchAvatar(p2.avatarUrl)]);
-  const png = renderVersusImage(
-    { avatar: p1Avatar, team: match.p1_team },
-    { avatar: p2Avatar, team: otherTeam(match.p1_team) },
-  );
-  const image = new AttachmentBuilder(Buffer.from(png), { name: VERSUS_FILE });
-
+  const { embed, file } = await versusPost(match);
   await tournamentChannel().send({
-    content: `Up next: <@${p1.id}> vs <@${p2.id}> (Bo${match.best_of})`,
-    embeds: [liveMatchEmbed({ label: match.label, bestOf: match.best_of, p1, p2 })],
-    files: [image],
-    allowedMentions: { users: env.devCommands ? [] : [p1.id, p2.id] },
+    content: `Up next: <@${match.p1_id}> vs <@${match.p2_id}> (Bo${match.best_of})`,
+    embeds: [embed],
+    files: [file],
+    allowedMentions: { users: env.devCommands ? [] : [match.p1_id, match.p2_id] },
   });
+}
+
+/**
+ * A live match as it stands now: the versus image if no games have been played,
+ * otherwise the scoreboard with the current standing. Used after /undo.
+ */
+export async function currentMatchPost(match: Match): Promise<Post> {
+  const games = listGames(match.id);
+  if (games.length === 0) return versusPost(match);
+  return seriesUpdate(match, seriesState(games, match.best_of), `${match.label} — Live`);
 }
 
 /** The team a player was on in a match. */
@@ -76,7 +95,7 @@ async function winnerImage(winner: EmbedPlayer, team: Team): Promise<AttachmentB
 }
 
 /** The green result embed for a decided match, plus the winner image it shows. */
-export async function matchResult(match: Match): Promise<{ embed: EmbedBuilder; file: AttachmentBuilder }> {
+export async function matchResult(match: Match): Promise<Post> {
   const [p1, p2] = await Promise.all([embedPlayer(match.p1_id!), embedPlayer(match.p2_id!)]);
   const winner = match.winner_id === p1.id ? p1 : p2;
   const embed = matchResultEmbed({
@@ -91,11 +110,7 @@ export async function matchResult(match: Match): Promise<{ embed: EmbedBuilder; 
 }
 
 /** The red update for a series still in progress, plus the scoreboard image it shows. */
-export async function seriesUpdate(
-  match: Match,
-  series: SeriesState,
-  gameNumber: number,
-): Promise<{ embed: EmbedBuilder; file: AttachmentBuilder }> {
+export async function seriesUpdate(match: Match, series: SeriesState, title: string): Promise<Post> {
   const [p1, p2] = await Promise.all([embedPlayer(match.p1_id!), embedPlayer(match.p2_id!)]);
   const [p1Avatar, p2Avatar] = await Promise.all([fetchAvatar(p1.avatarUrl), fetchAvatar(p2.avatarUrl)]);
   const png = renderScoreboardImage(
@@ -105,7 +120,7 @@ export async function seriesUpdate(
     series.p2Wins,
   );
   return {
-    embed: seriesUpdateEmbed({ label: match.label, gameNumber, standing: describeSeries(series, p1.name, p2.name) }),
+    embed: seriesUpdateEmbed({ title, standing: describeSeries(series, p1.name, p2.name) }),
     file: new AttachmentBuilder(Buffer.from(png), { name: SCOREBOARD_FILE }),
   };
 }

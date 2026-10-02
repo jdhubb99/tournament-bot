@@ -59,7 +59,7 @@ export const report: Command = {
     // (only possible in a best of 3 or 5) gets the red scoreboard with the standing.
     const post = outcome.series.winner
       ? await matchResult(outcome.match)
-      : await seriesUpdate(outcome.match, outcome.series, outcome.game.game_number);
+      : await seriesUpdate(outcome.match, outcome.series, `${match.label} — Game ${outcome.game.game_number}`);
     await interaction.editReply({
       content,
       embeds: [post.embed],

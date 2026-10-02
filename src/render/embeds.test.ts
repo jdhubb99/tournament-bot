@@ -54,7 +54,7 @@ describe("liveMatchEmbed", () => {
 
 describe("seriesUpdateEmbed", () => {
   it("is red with the standing and the scoreboard image", () => {
-    const embed = seriesUpdateEmbed({ label: "Final", gameNumber: 2, standing: "Series tied 1–1" }).toJSON();
+    const embed = seriesUpdateEmbed({ title: "Final — Game 2", standing: "Series tied 1–1" }).toJSON();
     expect(embed.color).toBe(0xed4245);
     expect(embed.title).toBe("Final — Game 2");
     expect(embed.description).toBe("Series tied 1–1");

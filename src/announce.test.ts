@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn, type Mock } from "bun:test";
-import { announceChampion, announceLiveMatch, bracketImage, fetchAvatar, matchResult, seriesUpdate } from "./announce.ts";
+import {
+  announceChampion,
+  announceLiveMatch,
+  bracketImage,
+  currentMatchPost,
+  fetchAvatar,
+  matchResult,
+  seriesUpdate,
+} from "./announce.ts";
 import { useTournamentChannel } from "./channel.ts";
 import { getLiveMatch, getMatch, recordGame, type Match } from "./store.ts";
 import { arg, cast, fakeChannel, resetDb, startedTournament } from "./test/helpers.ts";
@@ -122,7 +130,7 @@ describe("results", () => {
   it("builds the red series update with the scoreboard attached", async () => {
     const id = startedTournament({ semis: 3, final: 3 });
     const outcome = recordGame(getLiveMatch(id)!, 1, 3, "r", "goons");
-    const { embed, file } = await seriesUpdate(outcome.match, outcome.series, outcome.game.game_number);
+    const { embed, file } = await seriesUpdate(outcome.match, outcome.series, "Semifinal 1 — Game 1");
     expect(embed.toJSON()).toMatchObject({
       title: "Semifinal 1 — Game 1",
       description: "user-b leads the series 1–0",
@@ -218,5 +226,31 @@ describe("bracketImage", () => {
     for (let i = 0; i < 3; i++) recordGame(getLiveMatch(id)!, 2, 1, "r", "goons");
     const after = Buffer.from((await bracketImage(id)).attachment as Buffer);
     expect(before.equals(after)).toBe(false);
+  });
+});
+
+describe("currentMatchPost", () => {
+  beforeEach(() => {
+    resetDb();
+    useTournamentChannel(cast(fakeChannel()));
+  });
+
+  it("is the versus post when no games have been played", async () => {
+    const id = startedTournament();
+    const { embed, file } = await currentMatchPost(getLiveMatch(id)!);
+    expect(embed.toJSON()).toMatchObject({ title: "Semifinal 1 — Live", image: { url: "attachment://versus.png" } });
+    expect(file.name).toBe("versus.png");
+  });
+
+  it("is the scoreboard with the standing once games have been played", async () => {
+    const id = startedTournament({ semis: 3, final: 3 });
+    recordGame(getLiveMatch(id)!, 3, 1, "r", "goons");
+    const { embed, file } = await currentMatchPost(getLiveMatch(id)!);
+    expect(embed.toJSON()).toMatchObject({
+      title: "Semifinal 1 — Live",
+      description: "user-a leads the series 1–0",
+      image: { url: "attachment://scoreboard.png" },
+    });
+    expect(file.name).toBe("scoreboard.png");
   });
 });
