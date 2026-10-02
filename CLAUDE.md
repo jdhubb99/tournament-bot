@@ -24,7 +24,7 @@ bunx tsc --noEmit                 # type check
 
 Copy `.env.example` to `.env` and fill in `DISCORD_TOKEN`, `CLIENT_ID`, `GUILD_ID`, and `TOURNAMENT_CHANNEL_ID`. Read env vars through `src/env.ts`. It exits with a clear message when a variable is missing.
 
-Setting `DEV_COMMANDS=true` (optional) is for solo testing. It registers `/dev join user:@someone`, which adds any server member or bot to the signup, and it stops announcements from pinging anyone. Rerun the deploy command after changing the flag. Dev-only tools go in `src/commands/dev.ts` and reuse the real logic, such as `joinSignup`, rather than bypassing it.
+Setting `DEV_COMMANDS=true` (optional) is for solo testing. It registers `/dev join user:@someone`, which adds any server member or bot to the signup, and `/dev cancel`, which cancels the current tournament. It also stops announcements from pinging anyone. Rerun the deploy command after changing the flag. Dev-only tools go in `src/commands/dev.ts` and reuse the real logic, such as `joinSignup`, rather than bypassing it.
 
 New slash commands go in `src/commands/` and get registered in the `commands` array in `src/commands/index.ts`. Both the bot and `deploy-commands.ts` read from that array. Rerun `bun src/deploy-commands.ts` whenever a command's definition changes. Buttons are routed by customId prefix: `<command name>:<action>:<args>` goes to that command's `button()` handler.
 
