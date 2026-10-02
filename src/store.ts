@@ -331,3 +331,12 @@ export function listFinishedTournaments(guildId: string, limit = 10): (Tournamen
     )
     .all({ g: guildId, limit });
 }
+
+/** How many tournaments a player had won in this guild as of (and including) the given one. */
+export function titlesUpTo(guildId: string, playerId: string, tournamentId: number): number {
+  return db
+    .query<{ n: number }, { g: string; p: string; t: number }>(
+      "SELECT count(*) AS n FROM tournaments WHERE guild_id = $g AND status = 'done' AND winner_id = $p AND id <= $t",
+    )
+    .get({ g: guildId, p: playerId, t: tournamentId })!.n;
+}

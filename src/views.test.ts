@@ -2,7 +2,16 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { db } from "./db.ts";
 import { getLiveMatch, listMatches, recordGame } from "./store.ts";
 import { resetDb, startedTournament } from "./test/helpers.ts";
-import { FORMAT_NAMES, liveLineFor, playerName, resultLineFor, runnerUpOf, slotPlaceholder } from "./views.ts";
+import {
+  FORMAT_NAMES,
+  liveLineFor,
+  matchScore,
+  ordinal,
+  playerName,
+  resultLineFor,
+  runnerUpOf,
+  slotPlaceholder,
+} from "./views.ts";
 
 beforeEach(resetDb);
 
@@ -11,7 +20,7 @@ const live = (id: number) => getLiveMatch(id)!;
 describe("views", () => {
   it("names every format", () => {
     expect(FORMAT_NAMES).toEqual({
-      single_elim: "Single elimination",
+      single_elim: "Knockout",
       round_robin: "Round robin + final",
       groups: "Groups + playoffs",
     });
@@ -33,6 +42,18 @@ describe("views", () => {
     expect(resultLineFor(sf1!)).toBe("Semifinal 1: **B** def. A (4–1)");
     expect(resultLineFor(final!)).toBe("Final: **B** def. C (series 2–0)");
     expect(runnerUpOf(listMatches(id))).toBe("C");
+  });
+
+  it("scores a decided match from the winner's side", () => {
+    const id = startedTournament({ semis: 1, final: 3 });
+    recordGame(live(id), 1, 4, "r", "goons");
+    expect(matchScore(listMatches(id)[0]!)).toEqual({ winnerId: "b", loserId: "a", winnerScore: 4, loserScore: 1 });
+  });
+
+  it("writes ordinals", () => {
+    expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 101, 111].map(ordinal)).toEqual([
+      "1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "23rd", "101st", "111th",
+    ]);
   });
 
   it("names the runner-up when the final's p2 wins", () => {

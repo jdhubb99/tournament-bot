@@ -127,10 +127,10 @@ export function bracketEmbed(opts: { title: string; live: string | null }): Embe
   return embed;
 }
 
-/** /history: one line per finished tournament, newest first. */
-export function historyEmbed(lines: string[]): EmbedBuilder {
+/** /history: one entry per finished tournament, newest first, separated by blank lines. */
+export function historyEmbed(entries: string[]): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(GOLD)
     .setTitle("Tournament history")
-    .setDescription(lines.length ? lines.join("\n") : "No finished tournaments yet.");
+    .setDescription(entries.length ? entries.join("\n\n") : "No finished tournaments yet.");
 }

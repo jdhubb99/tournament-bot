@@ -142,7 +142,7 @@ describe("bracketEmbed", () => {
 
 describe("historyEmbed", () => {
   it("lists tournaments or says there are none", () => {
-    expect(historyEmbed(["one", "two"]).toJSON()).toMatchObject({ title: "Tournament history", description: "one\ntwo" });
+    expect(historyEmbed(["one", "two"]).toJSON()).toMatchObject({ title: "Tournament history", description: "one\n\ntwo" });
     expect(historyEmbed([]).toJSON().description).toBe("No finished tournaments yet.");
   });
 });

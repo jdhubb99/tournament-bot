@@ -265,3 +265,22 @@ describe("listFinishedTournaments", () => {
     expect(store.listFinishedTournaments("guild-1", 1).map((t) => t.id)).toEqual([second]);
   });
 });
+
+describe("titlesUpTo", () => {
+  it("counts a player's titles up to and including a tournament", () => {
+    const win = (winner: string) => {
+      const id = store.createTournament("guild-1", lengths);
+      db.query("UPDATE tournaments SET status = 'done', winner_id = $w WHERE id = $id").run({ w: winner, id });
+      return id;
+    };
+    store.upsertPlayer("a", "A");
+    store.upsertPlayer("b", "B");
+    const first = win("a");
+    win("b");
+    const third = win("a");
+    expect(store.titlesUpTo("guild-1", "a", first)).toBe(1);
+    expect(store.titlesUpTo("guild-1", "a", third)).toBe(2);
+    expect(store.titlesUpTo("guild-1", "b", third)).toBe(1);
+    expect(store.titlesUpTo("guild-2", "a", third)).toBe(0);
+  });
+});

@@ -39,7 +39,7 @@ it("shows the bracket image with the live match", async () => {
   expect(interaction.deferReply).toHaveBeenCalled();
   const message = arg(interaction.editReply);
   expect(message.embeds[0].toJSON()).toMatchObject({
-    title: "Rocket League 1v1 — Single elimination, 4 players",
+    title: "Rocket League 1v1 — Knockout, 4 players",
     description: "🔴 Live: **Semifinal 2** (Bo1): C vs D",
     image: { url: "attachment://bracket.png" },
   });
@@ -50,7 +50,7 @@ it("shows the last finished tournament when nothing is running", async () => {
   const id = startedTournament({ semis: 1, final: 1 });
   for (let i = 0; i < 3; i++) recordGame(getLiveMatch(id)!, 2, 1, "r", "goons");
   const embed = arg((await run()).editReply).embeds[0].toJSON();
-  expect(embed.title).toBe("Rocket League 1v1 — Single elimination, 4 players (finished)");
+  expect(embed.title).toBe("Rocket League 1v1 — Knockout, 4 players (finished)");
   expect(embed.description).toBeUndefined();
 });
 
