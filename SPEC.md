@@ -149,7 +149,7 @@ Match status: `pending` → `live` → `done`.
 - If it had ended the tournament, the tournament returns to active.
 - If it was the last league or group match, the playoff players filled from standings are cleared again (the final or semis go back to waiting).
 - Works on the guild's newest tournament while it's active, or after it has finished as long as no newer tournament has been started, so a wrong final report can still be fixed.
-- Everything the game caused is reversed: a match that went live after it goes back to waiting (its team coin flip is cleared), and the undo is posted publicly.
+- Everything the game caused is reversed: a match that went live after it goes back to waiting (its team coin flip is cleared), and the undo is posted publicly with the reopened match as it now stands: the versus image if it has no games left, otherwise the scoreboard with the corrected standing.
 
 ### Tournament channel
 
