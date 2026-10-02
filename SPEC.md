@@ -258,20 +258,20 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 ## Phases
 
 ### Phase 1 — Bot online
-- [ ] Create the app in the Discord developer portal and invite it with scopes `bot` + `applications.commands` and permissions: View Channels, Send Messages, Embed Links, Attach Files, Read Message History. No Manage Channels permission needed
-- [ ] Project scaffold with `bun init`, then `bun add discord.js` and `bun add -d typescript @types/bun`. Add `tsconfig.json`, `.env`, `.gitignore` (token + `data/`), and the scripts listed in Stack
-- [ ] `deploy-commands.ts` registering guild commands (instant updates in dev)
-- [ ] `/ping` test command responds
+- [x] Create the app in the Discord developer portal and invite it with scopes `bot` + `applications.commands` and permissions: View Channels, Send Messages, Embed Links, Attach Files, Read Message History. No Manage Channels permission needed
+- [x] Project scaffold with `bun init`, then `bun add discord.js` and `bun add -d typescript @types/bun`. Add `tsconfig.json`, `.env`, `.gitignore` (token + `data/`), and the scripts listed in Stack
+- [x] `deploy-commands.ts` registering guild commands (instant updates in dev)
+- [x] `/ping` test command responds
 
 **Done when:** `/ping` works in the server.
 
 ### Phase 2 — Signup and seeding
-- [ ] `db.ts` creates the schema
-- [ ] Create `#tournaments` manually in Discord and add its ID to `.env` as `TOURNAMENT_CHANNEL_ID`
-- [ ] Startup check for the channel and bot permissions; commands outside `#tournaments` get a private redirect
-- [ ] `/tournament start` with Join and Start buttons, live player list
-- [ ] Random shuffle seeding, single-elim generation for 4 players with `play_order` and `next_match_id`
-- [ ] First live match announced with embed
+- [x] `db.ts` creates the schema
+- [x] Create `#tournaments` manually in Discord and add its ID to `.env` as `TOURNAMENT_CHANNEL_ID`
+- [x] Startup check for the channel and bot permissions; commands outside `#tournaments` get a private redirect
+- [x] `/tournament start` with Join and Start buttons, live player list
+- [x] Random shuffle seeding, single-elim generation for 4 players with `play_order` and `next_match_id`
+- [x] First live match announced with embed
 
 **Done when:** four people can join, start, and see Semi 1 go live.
 
