@@ -67,3 +67,24 @@ describe("renderBracketImage", () => {
     expect(same(plain, renderBracketImage(changed, null))).toBe(false);
   });
 });
+
+describe("scores by series length", () => {
+  const withFinal = (bestOf: number, p1Score: number | null) => {
+    const matches = fourPlayer();
+    matches[2] = { ...matches[2]!, bestOf, p1: slot("A", { team: "goons", score: p1Score }) };
+    return matches;
+  };
+
+  it("adds a key under the bracket only when it mixes best of 1 and longer series", () => {
+    expect(size(renderBracketImage(fourPlayer(), null)).height).toBe(356);
+    expect(size(renderBracketImage(withFinal(3, null), null)).height).toBe(396);
+  });
+
+  it("draws games won as dots, so each extra win changes the image", () => {
+    const none = renderBracketImage(withFinal(3, null), null);
+    const one = renderBracketImage(withFinal(3, 1), null);
+    expect(same(none, renderBracketImage(withFinal(3, 0), null))).toBe(true);
+    expect(same(none, one)).toBe(false);
+    expect(same(one, renderBracketImage(withFinal(5, 1), null))).toBe(false);
+  });
+});

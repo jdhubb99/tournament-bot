@@ -1,3 +1,4 @@
+import { winsNeeded } from "../logic/series.ts";
 import { TEAMS, type Team } from "../logic/teams.ts";
 import { toPng } from "./match-images.ts";
 
@@ -13,7 +14,7 @@ export interface BracketSlot {
   team: Team | null;
   /** Seed number, shown beside first-round rows only. */
   seed: number | null;
-  /** Goals for a best of 1, games won for longer series; null before anything is reported. */
+  /** Goals for a best of 1 (drawn as a number), games won for longer series (drawn as dots); null before anything is reported. */
   score: number | null;
   won: boolean;
 }
@@ -41,6 +42,7 @@ const ROUND_ONE_GAP = 36;
 const COL_GAP = 70;
 const CHAMPION_W = 200;
 const AVATAR_R = 15;
+const KEY_H = 40;
 
 const CARD = "#2b2d31";
 const DIVIDER = "#3f4147";
@@ -72,7 +74,17 @@ function avatarCircle(id: string, cx: number, cy: number, r: number, avatar: Uin
   return `${picture}<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${ring}" stroke-width="${width}"/>`;
 }
 
-function row(slot: BracketSlot, x: number, y: number, id: string, showSeed: boolean, decided: boolean): string {
+/** One dot per game needed to win the series, filled for each game won, right-aligned at `right`. */
+function pips(right: number, cy: number, needed: number, won: number, color: string): string {
+  const left = right - (needed - 1) * 20;
+  return Array.from({ length: needed }, (_, i) =>
+    i < won
+      ? `<circle cx="${left + i * 20}" cy="${cy}" r="7" fill="${color}"/>`
+      : `<circle cx="${left + i * 20}" cy="${cy}" r="6" fill="none" stroke="${DIM}" stroke-width="2"/>`,
+  ).join("");
+}
+
+function row(slot: BracketSlot, bestOf: number, x: number, y: number, id: string, showSeed: boolean, decided: boolean): string {
   const mid = y + ROW_H / 2;
   const parts: string[] = [];
   if (showSeed && slot.seed !== null) parts.push(text(x - 12, mid + 9, String(slot.seed), { size: 24, fill: MUTED, anchor: "end" }));
@@ -85,7 +97,12 @@ function row(slot: BracketSlot, x: number, y: number, id: string, showSeed: bool
   parts.push(avatarCircle(id, x + 18 + AVATAR_R, mid, AVATAR_R, slot.avatar, ring, 3));
   const fill = decided && !slot.won ? MUTED : TEXT;
   parts.push(text(x + 18 + AVATAR_R * 2 + 12, mid + 9, truncate(slot.name, 16), { size: 26, fill }));
-  if (slot.score !== null) parts.push(text(x + CARD_W - 16, mid + 10, String(slot.score), { size: 28, fill, anchor: "end" }));
+  // Goals are numbers; games won in a longer series are dots, so the two can't be confused.
+  if (bestOf > 1) {
+    parts.push(pips(x + CARD_W - 20, mid, winsNeeded(bestOf), slot.score ?? 0, slot.team ? TEAMS[slot.team].color : TEXT));
+  } else if (slot.score !== null) {
+    parts.push(text(x + CARD_W - 16, mid + 10, String(slot.score), { size: 28, fill, anchor: "end" }));
+  }
   return parts.join("");
 }
 
@@ -98,8 +115,8 @@ function card(match: BracketMatch, x: number, cy: number, id: string, firstRound
     ${live ? `<circle cx="${x + CARD_W - 40}" cy="${y - 16}" r="5" fill="${LIVE_RED}"/>${text(x + CARD_W, y - 9, "Live", { size: 20, fill: LIVE_RED, anchor: "end" })}` : ""}
     <rect x="${x}" y="${y}" width="${CARD_W}" height="${CARD_H}" rx="8" fill="${CARD}" ${live ? `stroke="${LIVE_RED}" stroke-width="3"` : ""}/>
     <line x1="${x}" y1="${cy}" x2="${x + CARD_W}" y2="${cy}" stroke="${DIVIDER}" stroke-width="2"/>
-    ${row(match.p1, x, y, `${id}a`, firstRound, match.status === "done")}
-    ${row(match.p2, x, cy, `${id}b`, firstRound, match.status === "done")}`;
+    ${row(match.p1, match.bestOf, x, y, `${id}a`, firstRound, match.status === "done")}
+    ${row(match.p2, match.bestOf, x, cy, `${id}b`, firstRound, match.status === "done")}`;
 }
 
 /** Splits single-elim matches (in plan order: round 1, then round 2, ...) into rounds. */
@@ -125,7 +142,10 @@ export function renderBracketImage(matches: readonly BracketMatch[], champion: B
   const firstCount = rounds[0]!.length;
   const slotH = LABEL_H + CARD_H + ROUND_ONE_GAP;
   const width = PAD + SEED_W + rounds.length * (CARD_W + COL_GAP) + CHAMPION_W + PAD;
-  const height = PAD + firstCount * slotH - ROUND_ONE_GAP + PAD;
+  // A key under the bracket, only when it mixes goal numbers and game dots.
+  const mixed = matches.some((m) => m.bestOf === 1) && matches.some((m) => m.bestOf > 1);
+  const bracketBottom = PAD + firstCount * slotH - ROUND_ONE_GAP;
+  const height = bracketBottom + (mixed ? KEY_H : 0) + PAD;
 
   const centers: number[][] = [rounds[0]!.map((_, i) => PAD + LABEL_H + i * slotH + CARD_H / 2)];
   for (let r = 1; r < rounds.length; r++) {
@@ -160,6 +180,15 @@ export function renderBracketImage(matches: readonly BracketMatch[], champion: B
     parts.push(`<circle cx="${cx}" cy="${finalY - 10}" r="56" fill="none" stroke="${DIM}" stroke-width="4" stroke-dasharray="10 8"/>`);
     parts.push(text(cx, finalY + 2, "?", { size: 48, fill: DIM, anchor: "middle" }));
     parts.push(text(cx, finalY + 82, "Champion", { size: 26, fill: DIM, anchor: "middle" }));
+  }
+
+  if (mixed) {
+    const keyY = bracketBottom + KEY_H - 8;
+    parts.push(
+      text(PAD + SEED_W, keyY, "Numbers are goals (best of 1)", { size: 20, fill: MUTED }) +
+        pips(PAD + SEED_W + 262, keyY - 7, 2, 1, MUTED) +
+        text(PAD + SEED_W + 280, keyY, "are games won (best of 3 or 5)", { size: 20, fill: MUTED }),
+    );
   }
 
   return toPng(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${parts.join("")}</svg>`);
