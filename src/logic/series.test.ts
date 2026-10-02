@@ -64,8 +64,8 @@ describe("describeSeries", () => {
   });
 
   it("names the leader with their wins first", () => {
-    expect(describeSeries(state(2, 1), "Jake", "Benny")).toBe("Jake leads 2–1");
-    expect(describeSeries(state(0, 1), "Jake", "Benny")).toBe("Benny leads 1–0");
+    expect(describeSeries(state(2, 1), "Jake", "Benny")).toBe("Jake leads the series 2–1");
+    expect(describeSeries(state(0, 1), "Jake", "Benny")).toBe("Benny leads the series 1–0");
   });
 
   it("calls a tie", () => {
@@ -73,7 +73,7 @@ describe("describeSeries", () => {
   });
 
   it("names the series winner", () => {
-    expect(describeSeries(state(1, 2, "p2"), "Jake", "Benny")).toBe("Benny wins 2–1");
-    expect(describeSeries(state(1, 0, "p1"), "Jake", "Benny")).toBe("Jake wins 1–0");
+    expect(describeSeries(state(1, 2, "p2"), "Jake", "Benny")).toBe("Benny wins the series 2–1");
+    expect(describeSeries(state(1, 0, "p1"), "Jake", "Benny")).toBe("Jake wins the series 1–0");
   });
 });

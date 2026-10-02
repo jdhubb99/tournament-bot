@@ -1,5 +1,5 @@
 import { MessageFlags, SlashCommandBuilder } from "discord.js";
-import { announceChampion, announceLiveMatch, seriesResultEmbed } from "../announce.ts";
+import { announceChampion, announceLiveMatch, matchResult } from "../announce.ts";
 import { checkReport, describeSeries } from "../logic/series.ts";
 import { randomTeam } from "../logic/teams.ts";
 import { getLiveMatch, getOpenTournament, getPlayer, recordGame } from "../store.ts";
@@ -53,12 +53,14 @@ export const report: Command = {
     const p1Name = getPlayer(match.p1_id!)!.display_name;
     const p2Name = getPlayer(match.p2_id!)!.display_name;
     const [bold1, bold2] = check.p1Score > check.p2Score ? [`**${p1Name}**`, p2Name] : [p1Name, `**${p2Name}**`];
-    const content = [
+    const lines = [
       `Game ${outcome.game.game_number} · ${match.label}: ${bold1} ${check.p1Score} – ${check.p2Score} ${bold2} (reported by <@${interaction.user.id}>)`,
-      describeSeries(outcome.series, p1Name, p2Name),
-    ].join("\n");
+    ];
+    // A best of 1 is decided by its only game, so a series line would just repeat it.
+    if (match.best_of > 1) lines.push(describeSeries(outcome.series, p1Name, p2Name));
+    const content = lines.join("\n");
 
-    const embeds = outcome.series.winner ? [await seriesResultEmbed(outcome.match, outcome.series)] : [];
+    const embeds = outcome.series.winner ? [await matchResult(outcome.match)] : [];
     await interaction.editReply({ content, embeds, allowedMentions: { parse: [] } });
 
     if (outcome.next) await announceLiveMatch(outcome.next);

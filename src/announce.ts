@@ -1,9 +1,9 @@
 import { AttachmentBuilder, type EmbedBuilder } from "discord.js";
 import { tournamentChannel } from "./channel.ts";
 import { env } from "./env.ts";
-import { seriesState, type SeriesState } from "./logic/series.ts";
+import { seriesState } from "./logic/series.ts";
 import { otherTeam } from "./logic/teams.ts";
-import { championEmbed, matchEmbed, resultLine, type EmbedPlayer } from "./render/embeds.ts";
+import { championEmbed, liveMatchEmbed, matchResultEmbed, resultLine, type EmbedPlayer } from "./render/embeds.ts";
 import { renderVersusImage, VERSUS_FILE } from "./render/versus-image.ts";
 import { getPlayer, listGames, listMatches, type Match } from "./store.ts";
 
@@ -42,23 +42,22 @@ export async function announceLiveMatch(match: Match): Promise<void> {
 
   await tournamentChannel().send({
     content: `Up next: <@${p1.id}> vs <@${p2.id}> (Bo${match.best_of})`,
-    embeds: [matchEmbed({ label: match.label, bestOf: match.best_of, p1, p2, p1Wins: 0, p2Wins: 0 })],
+    embeds: [liveMatchEmbed({ label: match.label, bestOf: match.best_of, p1, p2 })],
     files: [image],
     allowedMentions: { users: env.devCommands ? [] : [p1.id, p2.id] },
   });
 }
 
-/** The green "X wins" embed for a decided series, showing only the winner's avatar. */
-export async function seriesResultEmbed(match: Match, series: SeriesState): Promise<EmbedBuilder> {
+/** The green result embed for a decided match, showing only the winner's avatar. */
+export async function matchResult(match: Match): Promise<EmbedBuilder> {
   const [p1, p2] = await Promise.all([embedPlayer(match.p1_id!), embedPlayer(match.p2_id!)]);
-  return matchEmbed({
+  return matchResultEmbed({
     label: match.label,
     bestOf: match.best_of,
     p1,
     p2,
-    p1Wins: series.p1Wins,
-    p2Wins: series.p2Wins,
-    winnerId: match.winner_id,
+    games: listGames(match.id),
+    winnerId: match.winner_id!,
   });
 }
 
@@ -82,6 +81,7 @@ export async function announceChampion(tournamentId: number, championId: string)
       loserName: name(loserId),
       winnerScore: winnerIsP1 ? p1 : p2,
       loserScore: winnerIsP1 ? p2 : p1,
+      series: m.best_of > 1,
     });
   });
 

@@ -49,11 +49,11 @@ export function checkReport(
     : { ok: true, p1Score: loserScore, p2Score: winnerScore };
 }
 
-/** "Jake leads 2–1", "Series tied 1–1", or "Jake wins 2–1". Leader's wins come first. */
+/** "Jake leads the series 2–1", "Series tied 1–1", or "Jake wins the series 2–1". Leader's wins come first. */
 export function describeSeries(state: SeriesState, p1Name: string, p2Name: string): string {
   const { p1Wins, p2Wins } = state;
   const [leader, high, low] = p1Wins >= p2Wins ? [p1Name, p1Wins, p2Wins] : [p2Name, p2Wins, p1Wins];
-  if (state.winner) return `${leader} wins ${high}–${low}`;
+  if (state.winner) return `${leader} wins the series ${high}–${low}`;
   if (p1Wins === p2Wins) return `Series tied ${p1Wins}–${p2Wins}`;
-  return `${leader} leads ${high}–${low}`;
+  return `${leader} leads the series ${high}–${low}`;
 }

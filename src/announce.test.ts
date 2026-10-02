@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn, type Mock } from "bun:test";
-import { announceChampion, announceLiveMatch, fetchAvatar, seriesResultEmbed } from "./announce.ts";
+import { announceChampion, announceLiveMatch, fetchAvatar, matchResult } from "./announce.ts";
 import { useTournamentChannel } from "./channel.ts";
 import { getLiveMatch, getMatch, recordGame, type Match } from "./store.ts";
 import { arg, cast, fakeChannel, resetDb, startedTournament } from "./test/helpers.ts";
@@ -65,8 +65,7 @@ describe("announceLiveMatch", () => {
     const embed = message.embeds[0].toJSON();
     expect(embed.title).toBe("Semifinal 1 — Live");
     expect(embed.image.url).toBe("attachment://versus.png");
-    // Alice is a server member; b falls back to the user profile.
-    expect(embed.fields[1].value).toBe("Alice **0 – 0** user-b");
+    expect(embed.fields).toEqual([{ name: "Format", value: "Best of 3 (first to 2)" }]);
     expect(fetchSpy.mock.calls.map((c) => c[0])).toEqual([
       "https://cdn.test/member/a.png",
       "https://cdn.test/user/b.png",
@@ -106,13 +105,14 @@ describe("results", () => {
     useTournamentChannel(cast(channel));
   });
 
-  it("builds the green winner embed for a decided series", async () => {
+  it("builds the green result embed for a decided match", async () => {
     const id = startedTournament();
     const outcome = recordGame(getLiveMatch(id)!, 1, 3, "r", "goons");
-    const embed = (await seriesResultEmbed(outcome.match, outcome.series)).toJSON();
+    const embed = (await matchResult(outcome.match)).toJSON();
+    // Alice is a server member; b falls back to the user profile.
     expect(embed.title).toBe("Semifinal 1 — user-b wins");
     expect(embed.thumbnail?.url).toBe("https://cdn.test/user/b.png");
-    expect(embed.fields?.[1]?.value).toBe("Alice **0 – 1** user-b");
+    expect(embed.fields).toEqual([{ name: "Final score", value: "Alice 1 – 3 **user-b**" }]);
   });
 
   it("crowns the champion with every result, goals for Bo1 and games for longer series", async () => {
@@ -133,7 +133,7 @@ describe("results", () => {
       { name: "Runner-up", value: "D" },
       {
         name: "Results",
-        value: ["Semifinal 1: **A** def. B (3–1)", "Semifinal 2: **D** def. C (2–0)", "Final: **A** def. D (2–1)"].join("\n"),
+        value: ["Semifinal 1: **A** def. B (3–1)", "Semifinal 2: **D** def. C (2–0)", "Final: **A** def. D (series 2–1)"].join("\n"),
       },
     ]);
   });
