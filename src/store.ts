@@ -3,6 +3,7 @@
 import { db } from "./db.ts";
 import type { PlannedMatch, SeriesLengths } from "./logic/bracket.ts";
 import { allMatchesDone, nextMatchToPlay } from "./logic/queue.ts";
+import { standings, type StandingRow } from "./logic/roundrobin.ts";
 import { seriesState, type SeriesState } from "./logic/series.ts";
 import type { Team } from "./logic/teams.ts";
 
@@ -189,6 +190,8 @@ export interface GameOutcome {
   next: Match | null;
   /** Set when this game decided the final match of the tournament. */
   championId: string | null;
+  /** True when this game finished a round-robin league, so the final was just filled from the standings. */
+  leagueFinished: boolean;
 }
 
 /**
@@ -212,6 +215,7 @@ export const recordGame = db.transaction(
 
     let next: Match | null = null;
     let championId: string | null = null;
+    let leagueFinished = false;
     if (series.winner) {
       const winnerId = series.winner === "p1" ? match.p1_id! : match.p2_id!;
       db.query("UPDATE matches SET status = 'done', winner_id = $w WHERE id = $id").run({ w: winnerId, id: match.id });
@@ -220,6 +224,7 @@ export const recordGame = db.transaction(
         db.query(`UPDATE matches SET ${column} = $w WHERE id = $id`).run({ w: winnerId, id: match.next_match_id });
       }
 
+      leagueFinished = fillLeagueFinal(match.tournament_id);
       const matches = listMatches(match.tournament_id);
       const upNext = nextMatchToPlay(matches);
       if (upNext) {
@@ -233,7 +238,7 @@ export const recordGame = db.transaction(
       }
     }
 
-    return { game, match: getMatch(match.id)!, series, next, championId };
+    return { game, match: getMatch(match.id)!, series, next, championId, leagueFinished };
   },
 );
 
@@ -298,7 +303,12 @@ export const undoLastGame = db.transaction((tournamentId: number): UndoOutcome |
       const column = match.next_slot === "p1" ? "p1_id" : "p2_id";
       db.query(`UPDATE matches SET ${column} = NULL WHERE id = $id`).run({ id: match.next_match_id });
     }
-    // TODO(phases 5–6): clear playoff players filled from league or group standings.
+    // In a round robin the final was filled from the standings when the league ended;
+    // reopening a league match means the league isn't over, so empty the final again.
+    const final = listMatches(tournamentId).at(-1)!;
+    if (getTournament(tournamentId)!.format === "round_robin" && match.id !== final.id) {
+      db.query("UPDATE matches SET p1_id = NULL, p2_id = NULL WHERE id = $id").run({ id: final.id });
+    }
     db.query("UPDATE matches SET status = 'live', winner_id = NULL WHERE id = $id").run({ id: match.id });
 
     const tournament = getTournament(tournamentId)!;
@@ -339,4 +349,32 @@ export function titlesUpTo(guildId: string, playerId: string, tournamentId: numb
       "SELECT count(*) AS n FROM tournaments WHERE guild_id = $g AND status = 'done' AND winner_id = $p AND id <= $t",
     )
     .get({ g: guildId, p: playerId, t: tournamentId })!.n;
+}
+
+/** The round-robin league table, from every decided league match (all matches but the final). */
+export function leagueStandings(tournamentId: number): StandingRow[] {
+  const seeded = listTournamentPlayers(tournamentId).map((p) => p.discord_id);
+  const results = listMatches(tournamentId)
+    .slice(0, -1)
+    .filter((m) => m.status === "done")
+    .map((m) => ({ p1: m.p1_id!, p2: m.p2_id!, winner: m.winner_id!, games: listGames(m.id) }));
+  return standings(seeded, results);
+}
+
+/**
+ * Round robin only: once every league match is done, puts the top 2 into the empty final
+ * (1st place as p1). Returns true if it just did that.
+ */
+function fillLeagueFinal(tournamentId: number): boolean {
+  if (getTournament(tournamentId)!.format !== "round_robin") return false;
+  const matches = listMatches(tournamentId);
+  const final = matches.at(-1)!;
+  if (final.p1_id || matches.slice(0, -1).some((m) => m.status !== "done")) return false;
+  const [first, second] = leagueStandings(tournamentId);
+  db.query("UPDATE matches SET p1_id = $p1, p2_id = $p2 WHERE id = $id").run({
+    p1: first!.playerId,
+    p2: second!.playerId,
+    id: final.id,
+  });
+  return true;
 }
