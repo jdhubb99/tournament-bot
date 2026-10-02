@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn, type Mock } from "bun:test";
-import { announceChampion, announceLiveMatch, fetchAvatar, matchResult } from "./announce.ts";
+import { announceChampion, announceLiveMatch, fetchAvatar, matchResult, seriesUpdate } from "./announce.ts";
 import { useTournamentChannel } from "./channel.ts";
 import { getLiveMatch, getMatch, recordGame, type Match } from "./store.ts";
 import { arg, cast, fakeChannel, resetDb, startedTournament } from "./test/helpers.ts";
@@ -117,6 +117,19 @@ describe("results", () => {
     expect(file.name).toBe("winner.png");
     expect([...(file.attachment as Buffer).subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
     expect(fetchSpy.mock.calls.map((c) => c[0])).toEqual(["https://cdn.test/user/b.png"]);
+  });
+
+  it("builds the red series update with the scoreboard attached", async () => {
+    const id = startedTournament({ semis: 3, final: 3 });
+    const outcome = recordGame(getLiveMatch(id)!, 1, 3, "r", "goons");
+    const { embed, file } = await seriesUpdate(outcome.match, outcome.series, outcome.game.game_number);
+    expect(embed.toJSON()).toMatchObject({
+      title: "Semifinal 1 — Game 1",
+      description: "user-b leads the series 1–0",
+      image: { url: "attachment://scoreboard.png" },
+    });
+    expect(file.name).toBe("scoreboard.png");
+    expect(fetchSpy.mock.calls.map((c) => c[0])).toEqual(["https://cdn.test/member/a.png", "https://cdn.test/user/b.png"]);
   });
 
   it("refuses to draw a winner for a match without teams", async () => {

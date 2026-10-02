@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { championEmbed, liveMatchEmbed, matchResultEmbed, resultLine, signupEmbed } from "./embeds.ts";
+import { championEmbed, liveMatchEmbed, matchResultEmbed, resultLine, seriesUpdateEmbed, signupEmbed } from "./embeds.ts";
 
 describe("signupEmbed", () => {
   const base = { semisBestOf: 1, finalBestOf: 3, maxPlayers: 8 };
@@ -40,6 +40,16 @@ describe("liveMatchEmbed", () => {
     expect(liveMatchEmbed({ ...players, label: "Semifinal 1", bestOf: 1 }).toJSON().fields).toEqual([
       { name: "Format", value: "Best of 1" },
     ]);
+  });
+});
+
+describe("seriesUpdateEmbed", () => {
+  it("is red with the standing and the scoreboard image", () => {
+    const embed = seriesUpdateEmbed({ label: "Final", gameNumber: 2, standing: "Series tied 1–1" }).toJSON();
+    expect(embed.color).toBe(0xed4245);
+    expect(embed.title).toBe("Final — Game 2");
+    expect(embed.description).toBe("Series tied 1–1");
+    expect(embed.image?.url).toBe("attachment://scoreboard.png");
   });
 });
 

@@ -1,6 +1,6 @@
 import { EmbedBuilder } from "discord.js";
 import { seriesState, winsNeeded, type GameScore } from "../logic/series.ts";
-import { VERSUS_FILE, WINNER_FILE } from "./match-images.ts";
+import { SCOREBOARD_FILE, VERSUS_FILE, WINNER_FILE } from "./match-images.ts";
 
 const LIVE_RED = 0xed4245;
 const GREEN = 0x2ecc71;
@@ -41,6 +41,15 @@ export function liveMatchEmbed(opts: { label: string; bestOf: number; p1: EmbedP
     .setDescription(`<@${opts.p1.id}> vs <@${opts.p2.id}>`)
     .addFields({ name: "Format", value: format })
     .setImage(`attachment://${VERSUS_FILE}`);
+}
+
+/** A series still in progress after a game: red stripe, the standing, and the attached scoreboard image. */
+export function seriesUpdateEmbed(opts: { label: string; gameNumber: number; standing: string }): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(LIVE_RED)
+    .setTitle(`${opts.label} — Game ${opts.gameNumber}`)
+    .setDescription(opts.standing)
+    .setImage(`attachment://${SCOREBOARD_FILE}`);
 }
 
 /**

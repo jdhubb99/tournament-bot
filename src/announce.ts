@@ -1,10 +1,24 @@
 import { AttachmentBuilder, type EmbedBuilder } from "discord.js";
 import { tournamentChannel } from "./channel.ts";
 import { env } from "./env.ts";
-import { seriesState } from "./logic/series.ts";
+import { describeSeries, seriesState, type SeriesState } from "./logic/series.ts";
 import { otherTeam, type Team } from "./logic/teams.ts";
-import { championEmbed, liveMatchEmbed, matchResultEmbed, resultLine, type EmbedPlayer } from "./render/embeds.ts";
-import { renderVersusImage, renderWinnerImage, VERSUS_FILE, WINNER_FILE } from "./render/match-images.ts";
+import {
+  championEmbed,
+  liveMatchEmbed,
+  matchResultEmbed,
+  resultLine,
+  seriesUpdateEmbed,
+  type EmbedPlayer,
+} from "./render/embeds.ts";
+import {
+  renderScoreboardImage,
+  renderVersusImage,
+  renderWinnerImage,
+  SCOREBOARD_FILE,
+  VERSUS_FILE,
+  WINNER_FILE,
+} from "./render/match-images.ts";
 import { getPlayer, listGames, listMatches, type Match } from "./store.ts";
 
 // Static PNGs so animated avatars and webp still render in the versus image.
@@ -73,6 +87,26 @@ export async function matchResult(match: Match): Promise<{ embed: EmbedBuilder; 
     winnerId: winner.id,
   });
   return { embed, file: await winnerImage(winner, teamIn(match, winner.id)) };
+}
+
+/** The red update for a series still in progress, plus the scoreboard image it shows. */
+export async function seriesUpdate(
+  match: Match,
+  series: SeriesState,
+  gameNumber: number,
+): Promise<{ embed: EmbedBuilder; file: AttachmentBuilder }> {
+  const [p1, p2] = await Promise.all([embedPlayer(match.p1_id!), embedPlayer(match.p2_id!)]);
+  const [p1Avatar, p2Avatar] = await Promise.all([fetchAvatar(p1.avatarUrl), fetchAvatar(p2.avatarUrl)]);
+  const png = renderScoreboardImage(
+    { avatar: p1Avatar, team: teamIn(match, p1.id) },
+    { avatar: p2Avatar, team: teamIn(match, p2.id) },
+    series.p1Wins,
+    series.p2Wins,
+  );
+  return {
+    embed: seriesUpdateEmbed({ label: match.label, gameNumber, standing: describeSeries(series, p1.name, p2.name) }),
+    file: new AttachmentBuilder(Buffer.from(png), { name: SCOREBOARD_FILE }),
+  };
 }
 
 /** Crowns the champion with a summary of every match, pinging only the champion (nobody in dev mode). */
