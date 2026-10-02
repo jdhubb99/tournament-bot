@@ -1,6 +1,8 @@
 import { mock } from "bun:test";
 import { ChannelType } from "discord.js";
 import { db } from "../db.ts";
+import { singleElim } from "../logic/bracket.ts";
+import { addTournamentPlayer, createTournament, startTournament, upsertPlayer } from "../store.ts";
 
 /** Casts a hand-built fake to the discord.js type a function expects. */
 export function cast<T>(fake: unknown): T {
@@ -86,10 +88,27 @@ export function fakeInteraction(opts: {
     followUp: mock(async (_message: unknown) => {}),
     update: mock(async (_message: unknown) => {}),
     deferUpdate: mock(async () => {}),
+    deferReply: mock(async () => {}),
+    editReply: mock(async (_message: unknown) => {}),
   };
 }
 
 /** The first argument of a mock's nth call, typed loosely for assertions. */
 export function arg(fn: { mock: { calls: unknown[][] } }, call = 0): any {
   return fn.mock.calls[call]?.[0];
+}
+
+/**
+ * Creates an active single-elim tournament with players a, b, c, d (seeded in that
+ * order, display names A–D), so Semifinal 1 (a vs b, p1 on Goons) is live.
+ */
+export function startedTournament(lengths = { semis: 1, final: 3 }): number {
+  const id = createTournament("guild-1", lengths);
+  const seeded = ["a", "b", "c", "d"];
+  for (const p of seeded) {
+    upsertPlayer(p, p.toUpperCase());
+    addTournamentPlayer(id, p);
+  }
+  startTournament(id, "single_elim", seeded, singleElim(seeded, lengths), "goons");
+  return id;
 }
