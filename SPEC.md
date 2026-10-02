@@ -250,7 +250,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 ## Visuals
 
 **Embeds (built in from phase 2):**
-- Live match embed: yellow, with a "versus" image showing both players' avatars side by side, each ringed and labelled in its team's color (SVG to PNG with `@resvg/resvg-js`, using the bundled Bebas Neue font in `assets/fonts/`; an avatar that fails to download becomes a grey circle) and the series score. Once the series is decided it turns green and shows only the winner's avatar
+- Live match embed: red side stripe ("on air"), with a "versus" image showing both players' avatars side by side, each ringed and labelled in its team's color, and "VS" split between the two team colors (SVG to PNG with `@resvg/resvg-js`, using the bundled Bebas Neue font in `assets/fonts/`; an avatar that fails to download becomes a grey circle) and the series score. Once the series is decided it turns green and shows only the winner's avatar
 - Standings embed for round robin
 - Champion embed
 
