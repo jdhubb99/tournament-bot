@@ -1,13 +1,12 @@
 import { AttachmentBuilder, type EmbedBuilder } from "discord.js";
 import { tournamentChannel } from "./channel.ts";
 import { env } from "./env.ts";
-import { describeSeries, seriesState, type SeriesState } from "./logic/series.ts";
+import { describeSeries, type SeriesState } from "./logic/series.ts";
 import { otherTeam, type Team } from "./logic/teams.ts";
 import {
   championEmbed,
   liveMatchEmbed,
   matchResultEmbed,
-  resultLine,
   seriesUpdateEmbed,
   type EmbedPlayer,
 } from "./render/embeds.ts";
@@ -19,7 +18,8 @@ import {
   VERSUS_FILE,
   WINNER_FILE,
 } from "./render/match-images.ts";
-import { getPlayer, listGames, listMatches, type Match } from "./store.ts";
+import { listGames, listMatches, type Match } from "./store.ts";
+import { resultLineFor, runnerUpOf } from "./views.ts";
 
 // Static PNGs so animated avatars and webp still render in the versus image.
 const AVATAR_OPTIONS = { extension: "png", forceStatic: true, size: 256 } as const;
@@ -111,32 +111,14 @@ export async function seriesUpdate(
 
 /** Crowns the champion with a summary of every match, pinging only the champion (nobody in dev mode). */
 export async function announceChampion(tournamentId: number, championId: string): Promise<void> {
-  const name = (id: string) => getPlayer(id)?.display_name ?? id;
   const matches = listMatches(tournamentId);
   const final = matches.at(-1)!;
-  const runnerUp = final.p1_id === championId ? final.p2_id! : final.p1_id!;
-
-  const results = matches.map((m) => {
-    const games = listGames(m.id);
-    const series = seriesState(games, m.best_of);
-    const winnerIsP1 = m.p1_id === m.winner_id;
-    const loserId = winnerIsP1 ? m.p2_id! : m.p1_id!;
-    // Bo1: show the goals of the single game. Longer series: show games won.
-    const [p1, p2] = m.best_of === 1 ? [games[0]!.p1_score, games[0]!.p2_score] : [series.p1Wins, series.p2Wins];
-    return resultLine({
-      label: m.label,
-      winnerName: name(m.winner_id!),
-      loserName: name(loserId),
-      winnerScore: winnerIsP1 ? p1 : p2,
-      loserScore: winnerIsP1 ? p2 : p1,
-      series: m.best_of > 1,
-    });
-  });
+  const results = matches.map(resultLineFor);
 
   const champion = await embedPlayer(championId);
   await tournamentChannel().send({
     content: `🏆 <@${championId}> wins the tournament!`,
-    embeds: [championEmbed({ champion, runnerUpName: name(runnerUp), results })],
+    embeds: [championEmbed({ champion, runnerUpName: runnerUpOf(matches), results })],
     files: [await winnerImage(champion, teamIn(final, championId))],
     allowedMentions: { users: env.devCommands ? [] : [championId] },
   });
