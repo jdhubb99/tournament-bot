@@ -1,5 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import { championEmbed, liveMatchEmbed, matchResultEmbed, resultLine, seriesUpdateEmbed, signupEmbed } from "./embeds.ts";
+import {
+  bracketEmbed,
+  championEmbed,
+  historyEmbed,
+  liveMatchEmbed,
+  matchResultEmbed,
+  resultLine,
+  seriesUpdateEmbed,
+  signupEmbed,
+} from "./embeds.ts";
 
 describe("signupEmbed", () => {
   const base = { semisBestOf: 1, finalBestOf: 3, maxPlayers: 8 };
@@ -45,7 +54,7 @@ describe("liveMatchEmbed", () => {
 
 describe("seriesUpdateEmbed", () => {
   it("is red with the standing and the scoreboard image", () => {
-    const embed = seriesUpdateEmbed({ label: "Final", gameNumber: 2, standing: "Series tied 1–1" }).toJSON();
+    const embed = seriesUpdateEmbed({ title: "Final — Game 2", standing: "Series tied 1–1" }).toJSON();
     expect(embed.color).toBe(0xed4245);
     expect(embed.title).toBe("Final — Game 2");
     expect(embed.description).toBe("Series tied 1–1");
@@ -120,5 +129,20 @@ describe("championEmbed", () => {
       { name: "Runner-up", value: "Benny" },
       { name: "Results", value: "Semifinal 1: **Jake** def. A (3–1)\nFinal: **Jake** def. Benny (2–1)" },
     ]);
+  });
+});
+
+describe("bracketEmbed", () => {
+  it("shows the attached bracket image, with the live match when there is one", () => {
+    const embed = bracketEmbed({ title: "T", live: "**Final** (Bo3): A vs D" }).toJSON();
+    expect(embed).toMatchObject({ title: "T", description: "🔴 Live: **Final** (Bo3): A vs D", image: { url: "attachment://bracket.png" } });
+    expect(bracketEmbed({ title: "T", live: null }).toJSON().description).toBeUndefined();
+  });
+});
+
+describe("historyEmbed", () => {
+  it("lists tournaments or says there are none", () => {
+    expect(historyEmbed(["one", "two"]).toJSON()).toMatchObject({ title: "Tournament history", description: "one\n\ntwo" });
+    expect(historyEmbed([]).toJSON().description).toBe("No finished tournaments yet.");
   });
 });

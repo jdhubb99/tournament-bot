@@ -8,12 +8,14 @@ import {
   type ChatInputCommandInteraction,
 } from "discord.js";
 import { announceLiveMatch } from "../announce.ts";
+import { tournamentChannel } from "../channel.ts";
 import { singleElim } from "../logic/bracket.ts";
 import { shuffle } from "../logic/random.ts";
 import { randomTeam } from "../logic/teams.ts";
 import { signupEmbed } from "../render/embeds.ts";
 import {
   addTournamentPlayer,
+  cancelTournament,
   createTournament,
   getLiveMatch,
   getOpenTournament,
@@ -103,6 +105,41 @@ async function begin(interaction: ButtonInteraction<"cached">, tournament: Tourn
   await announceLiveMatch(getLiveMatch(tournament.id)!);
 }
 
+async function askToCancel(interaction: ChatInputCommandInteraction<"cached">) {
+  const open = getOpenTournament(interaction.guildId);
+  if (!open) {
+    await interaction.reply(ephemeral("No tournament is running."));
+    return;
+  }
+  const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`tournament:cancel:${open.id}`).setLabel("Cancel tournament").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`tournament:keep:${open.id}`).setLabel("Keep it").setStyle(ButtonStyle.Secondary),
+  );
+  await interaction.reply({
+    content: `Cancel the current tournament (${open.status === "signup" ? "in signup" : "in progress"})? This can't be undone.`,
+    components: [buttons],
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+/** Handles the private confirmation from /tournament cancel. */
+async function confirmCancel(interaction: ButtonInteraction<"cached">, found: Tournament | null, confirmed: boolean) {
+  if (!confirmed) {
+    await interaction.update({ content: "Okay, the tournament continues.", components: [] });
+    return;
+  }
+  if (!found || (found.status !== "signup" && found.status !== "active")) {
+    await interaction.update({ content: "That tournament has already ended.", components: [] });
+    return;
+  }
+  cancelTournament(found.id);
+  await interaction.update({ content: "Cancelled.", components: [] });
+  await tournamentChannel().send({
+    content: `🛑 The tournament was cancelled by <@${interaction.user.id}>. Run \`/tournament start\` to begin a new one.`,
+    allowedMentions: { parse: [] },
+  });
+}
+
 export const tournament: Command = {
   data: new SlashCommandBuilder()
     .setName("tournament")
@@ -113,7 +150,8 @@ export const tournament: Command = {
         .setDescription("Open signup with Join and Start buttons")
         .addIntegerOption((o) => o.setName("semis").setDescription("Semifinal series length (default Bo1)").addChoices(...SERIES_CHOICES))
         .addIntegerOption((o) => o.setName("final").setDescription("Final series length (default Bo3)").addChoices(...SERIES_CHOICES)),
-    ),
+    )
+    .addSubcommand((sub) => sub.setName("cancel").setDescription("Cancel the current tournament")),
   tournamentOnly: true,
 
   async execute(interaction) {
@@ -121,12 +159,15 @@ export const tournament: Command = {
     switch (interaction.options.getSubcommand()) {
       case "start":
         return start(interaction);
+      case "cancel":
+        return askToCancel(interaction);
     }
   },
 
   async button(interaction, [action, idArg]) {
     if (!interaction.inCachedGuild()) return;
     const found = getTournament(Number(idArg));
+    if (action === "cancel" || action === "keep") return confirmCancel(interaction, found, action === "cancel");
     if (!found || found.status !== "signup") {
       await interaction.reply(ephemeral("Signup for this tournament is closed."));
       return;

@@ -1,5 +1,6 @@
 import { EmbedBuilder } from "discord.js";
 import { seriesState, winsNeeded, type GameScore } from "../logic/series.ts";
+import { BRACKET_FILE } from "./bracket-image.ts";
 import { SCOREBOARD_FILE, VERSUS_FILE, WINNER_FILE } from "./match-images.ts";
 
 const LIVE_RED = 0xed4245;
@@ -44,10 +45,10 @@ export function liveMatchEmbed(opts: { label: string; bestOf: number; p1: EmbedP
 }
 
 /** A series still in progress after a game: red stripe, the standing, and the attached scoreboard image. */
-export function seriesUpdateEmbed(opts: { label: string; gameNumber: number; standing: string }): EmbedBuilder {
+export function seriesUpdateEmbed(opts: { title: string; standing: string }): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(LIVE_RED)
-    .setTitle(`${opts.label} — Game ${opts.gameNumber}`)
+    .setTitle(opts.title)
     .setDescription(opts.standing)
     .setImage(`attachment://${SCOREBOARD_FILE}`);
 }
@@ -117,4 +118,19 @@ export function championEmbed(opts: { champion: EmbedPlayer; runnerUpName: strin
       { name: "Runner-up", value: opts.runnerUpName },
       { name: "Results", value: opts.results.join("\n") },
     );
+}
+
+/** /bracket: the attached bracket image, with the live match (and its series standing) as text. */
+export function bracketEmbed(opts: { title: string; live: string | null }): EmbedBuilder {
+  const embed = new EmbedBuilder().setColor(BLURPLE).setTitle(opts.title).setImage(`attachment://${BRACKET_FILE}`);
+  if (opts.live) embed.setDescription(`🔴 Live: ${opts.live}`);
+  return embed;
+}
+
+/** /history: one entry per finished tournament, newest first, separated by blank lines. */
+export function historyEmbed(entries: string[]): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(GOLD)
+    .setTitle("Tournament history")
+    .setDescription(entries.length ? entries.join("\n\n") : "No finished tournaments yet.");
 }

@@ -84,7 +84,8 @@ export function renderWinnerImage(winner: VersusSide): Uint8Array {
   return toPng(svg);
 }
 
-function toPng(svg: string): Uint8Array {
+/** Renders SVG to PNG with the bundled font. Shared by every image module in render/. */
+export function toPng(svg: string): Uint8Array {
   const resvg = new Resvg(svg, { font: { fontFiles: [FONT_FILE], loadSystemFonts: false, defaultFontFamily: "Bebas Neue" } });
   return resvg.render().asPng();
 }

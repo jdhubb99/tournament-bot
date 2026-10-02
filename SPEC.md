@@ -74,6 +74,8 @@ Rule: everything in `logic/` is pure (no Discord or database imports) so it can 
 | 8 | Single elimination | 7 (4 quarters, 2 semis, final) |
 | 9+ | Not supported: Join is capped at 8 | n/a |
 
+Single elimination is shown to players as "Knockout".
+
 Everyone who joins plays. The goal is to keep every tournament at roughly 12 matches or fewer, since matches are played one at a time.
 
 ### Series length
@@ -148,7 +150,8 @@ Match status: `pending` → `live` → `done`.
 - If that game had closed a match, the match reopens and any advancement is reverted.
 - If it had ended the tournament, the tournament returns to active.
 - If it was the last league or group match, the playoff players filled from standings are cleared again (the final or semis go back to waiting).
-- Only works on the active tournament.
+- Works on the guild's newest tournament while it's active, or after it has finished as long as no newer tournament has been started, so a wrong final report can still be fixed.
+- Everything the game caused is reversed: a match that went live after it goes back to waiting (its team coin flip is cleared), and the undo is posted publicly with the reopened match as it now stands: the versus image if it has no games left, otherwise the scoreboard with the corrected standing.
 
 ### Tournament channel
 
@@ -232,11 +235,11 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 | Command | What it does |
 |---|---|
 | `/tournament start [semis] [final]` | Open signup with Join/Start buttons |
-| `/tournament cancel` | Cancel the active tournament |
+| `/tournament cancel` | Cancel the active tournament (asks the person for private confirmation first, then announces it in the channel) |
 | `/report winner winner_score loser_score` | Record a game in the live match |
 | `/undo` | Remove the last reported game |
-| `/bracket` | Show live match, upcoming queue, results so far (round robin and groups: also current standings) |
-| `/history` | Past tournaments: date, format, winner, runner-up |
+| `/bracket` | Bracket image (live match, queue, results, champion) plus the live match as text. Shows the last finished tournament when none is running (round robin and groups: a standings image instead) |
+| `/history` | Past tournaments, newest first, two lines each: "date and time · Knockout, 4 players, semis Bo1" (no tournament number, since cancelled tournaments would leave gaps) then "🏆 **Jegson** (2nd title) beat Jako 2–1 in the final (Bo3)". A best-of-1 final shows goals, longer finals show games won |
 | `/leaderboard` | Titles, series record, game record, goal differential |
 | `/stats @player` | Personal stats and head-to-head records |
 | `/pick count options` | Random picker |
@@ -295,9 +298,9 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 **Done when:** a full 4-player tournament can be played end to end.
 
 ### Phase 4 — Views and corrections
-- [ ] `/bracket`, `/history`
-- [ ] `/undo` with reopen and revert logic
-- [ ] `/tournament cancel`
+- [x] `/bracket`, `/history`
+- [x] `/undo` with reopen and revert logic
+- [x] `/tournament cancel`
 
 ### Phase 5 — Round robin
 - [ ] Circle-method schedule with back-to-back avoidance
@@ -306,6 +309,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 - [ ] Tournament winner = final winner; `winner_id` set only after the final
 - [ ] 5 players = round robin + final
 - [ ] Unit tests for schedule, standings, and final setup
+- [ ] Standings image for `/bracket`: the league table plus the top-2 final once the league is done (same style as the bracket image)
 
 **Done when:** a 5-player tournament runs 10 league matches, then a top-2 final, then crowns a champion.
 
@@ -323,9 +327,9 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 - [ ] `game` filter plumbed through queries
 
 ### Phase 8 — Visuals
-- [ ] SVG bracket layout for single elim
-- [ ] PNG conversion, avatars, bundled font (the versus image in `render/match-images.ts` already does all three for one match)
-- [ ] Standings image for round robin
+- [x] SVG bracket layout for single elim (4 and 8 players, in `render/bracket-image.ts`): match cards with avatars ringed in team colors, seeds, scores (goals as numbers for a best of 1; games won as dots for a best of 3 or 5, with a key under the bracket when it mixes both), the live match outlined in red, the winning row marked in its team color, and the champion in gold
+- [x] PNG conversion, avatars, bundled font
+- [ ] Standings image for round robin (built in phase 5 along with the format)
 - [ ] Edit-in-place bracket message after each match
 
 ### Phase 9 — Hosting

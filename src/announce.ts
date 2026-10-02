@@ -7,7 +7,6 @@ import {
   championEmbed,
   liveMatchEmbed,
   matchResultEmbed,
-  resultLine,
   seriesUpdateEmbed,
   type EmbedPlayer,
 } from "./render/embeds.ts";
@@ -19,7 +18,9 @@ import {
   VERSUS_FILE,
   WINNER_FILE,
 } from "./render/match-images.ts";
-import { getPlayer, listGames, listMatches, type Match } from "./store.ts";
+import { BRACKET_FILE, renderBracketImage, type BracketSlot } from "./render/bracket-image.ts";
+import { getTournament, listGames, listMatches, listTournamentPlayers, type Match } from "./store.ts";
+import { playerName, resultLineFor, runnerUpOf, slotPlaceholder } from "./views.ts";
 
 // Static PNGs so animated avatars and webp still render in the versus image.
 const AVATAR_OPTIONS = { extension: "png", forceStatic: true, size: 256 } as const;
@@ -42,24 +43,43 @@ export async function fetchAvatar(url: string): Promise<Uint8Array | null> {
   }
 }
 
-/** Posts the live match embed with the team-colored versus image, pinging only its two players (nobody in dev mode). */
+type Post = { embed: EmbedBuilder; file: AttachmentBuilder };
+
+/** The red live embed with the team-colored versus image, for a match with no games yet. */
+async function versusPost(match: Match): Promise<Post> {
+  const [p1, p2] = await Promise.all([embedPlayer(match.p1_id!), embedPlayer(match.p2_id!)]);
+  const [p1Avatar, p2Avatar] = await Promise.all([fetchAvatar(p1.avatarUrl), fetchAvatar(p2.avatarUrl)]);
+  const png = renderVersusImage(
+    { avatar: p1Avatar, team: teamIn(match, p1.id) },
+    { avatar: p2Avatar, team: teamIn(match, p2.id) },
+  );
+  return {
+    embed: liveMatchEmbed({ label: match.label, bestOf: match.best_of, p1, p2 }),
+    file: new AttachmentBuilder(Buffer.from(png), { name: VERSUS_FILE }),
+  };
+}
+
+/** Posts "Up next" with the versus image, pinging only its two players (nobody in dev mode). */
 export async function announceLiveMatch(match: Match): Promise<void> {
   if (!match.p1_id || !match.p2_id) throw new Error(`Match ${match.id} went live without both players`);
   if (!match.p1_team) throw new Error(`Match ${match.id} went live without teams`);
-  const [p1, p2] = await Promise.all([embedPlayer(match.p1_id), embedPlayer(match.p2_id)]);
-  const [p1Avatar, p2Avatar] = await Promise.all([fetchAvatar(p1.avatarUrl), fetchAvatar(p2.avatarUrl)]);
-  const png = renderVersusImage(
-    { avatar: p1Avatar, team: match.p1_team },
-    { avatar: p2Avatar, team: otherTeam(match.p1_team) },
-  );
-  const image = new AttachmentBuilder(Buffer.from(png), { name: VERSUS_FILE });
-
+  const { embed, file } = await versusPost(match);
   await tournamentChannel().send({
-    content: `Up next: <@${p1.id}> vs <@${p2.id}> (Bo${match.best_of})`,
-    embeds: [liveMatchEmbed({ label: match.label, bestOf: match.best_of, p1, p2 })],
-    files: [image],
-    allowedMentions: { users: env.devCommands ? [] : [p1.id, p2.id] },
+    content: `Up next: <@${match.p1_id}> vs <@${match.p2_id}> (Bo${match.best_of})`,
+    embeds: [embed],
+    files: [file],
+    allowedMentions: { users: env.devCommands ? [] : [match.p1_id, match.p2_id] },
   });
+}
+
+/**
+ * A live match as it stands now: the versus image if no games have been played,
+ * otherwise the scoreboard with the current standing. Used after /undo.
+ */
+export async function currentMatchPost(match: Match): Promise<Post> {
+  const games = listGames(match.id);
+  if (games.length === 0) return versusPost(match);
+  return seriesUpdate(match, seriesState(games, match.best_of), `${match.label} — Live`);
 }
 
 /** The team a player was on in a match. */
@@ -75,7 +95,7 @@ async function winnerImage(winner: EmbedPlayer, team: Team): Promise<AttachmentB
 }
 
 /** The green result embed for a decided match, plus the winner image it shows. */
-export async function matchResult(match: Match): Promise<{ embed: EmbedBuilder; file: AttachmentBuilder }> {
+export async function matchResult(match: Match): Promise<Post> {
   const [p1, p2] = await Promise.all([embedPlayer(match.p1_id!), embedPlayer(match.p2_id!)]);
   const winner = match.winner_id === p1.id ? p1 : p2;
   const embed = matchResultEmbed({
@@ -90,11 +110,7 @@ export async function matchResult(match: Match): Promise<{ embed: EmbedBuilder; 
 }
 
 /** The red update for a series still in progress, plus the scoreboard image it shows. */
-export async function seriesUpdate(
-  match: Match,
-  series: SeriesState,
-  gameNumber: number,
-): Promise<{ embed: EmbedBuilder; file: AttachmentBuilder }> {
+export async function seriesUpdate(match: Match, series: SeriesState, title: string): Promise<Post> {
   const [p1, p2] = await Promise.all([embedPlayer(match.p1_id!), embedPlayer(match.p2_id!)]);
   const [p1Avatar, p2Avatar] = await Promise.all([fetchAvatar(p1.avatarUrl), fetchAvatar(p2.avatarUrl)]);
   const png = renderScoreboardImage(
@@ -104,40 +120,67 @@ export async function seriesUpdate(
     series.p2Wins,
   );
   return {
-    embed: seriesUpdateEmbed({ label: match.label, gameNumber, standing: describeSeries(series, p1.name, p2.name) }),
+    embed: seriesUpdateEmbed({ title, standing: describeSeries(series, p1.name, p2.name) }),
     file: new AttachmentBuilder(Buffer.from(png), { name: SCOREBOARD_FILE }),
   };
 }
 
 /** Crowns the champion with a summary of every match, pinging only the champion (nobody in dev mode). */
 export async function announceChampion(tournamentId: number, championId: string): Promise<void> {
-  const name = (id: string) => getPlayer(id)?.display_name ?? id;
   const matches = listMatches(tournamentId);
   const final = matches.at(-1)!;
-  const runnerUp = final.p1_id === championId ? final.p2_id! : final.p1_id!;
-
-  const results = matches.map((m) => {
-    const games = listGames(m.id);
-    const series = seriesState(games, m.best_of);
-    const winnerIsP1 = m.p1_id === m.winner_id;
-    const loserId = winnerIsP1 ? m.p2_id! : m.p1_id!;
-    // Bo1: show the goals of the single game. Longer series: show games won.
-    const [p1, p2] = m.best_of === 1 ? [games[0]!.p1_score, games[0]!.p2_score] : [series.p1Wins, series.p2Wins];
-    return resultLine({
-      label: m.label,
-      winnerName: name(m.winner_id!),
-      loserName: name(loserId),
-      winnerScore: winnerIsP1 ? p1 : p2,
-      loserScore: winnerIsP1 ? p2 : p1,
-      series: m.best_of > 1,
-    });
-  });
+  const results = matches.map(resultLineFor);
 
   const champion = await embedPlayer(championId);
   await tournamentChannel().send({
     content: `🏆 <@${championId}> wins the tournament!`,
-    embeds: [championEmbed({ champion, runnerUpName: name(runnerUp), results })],
+    embeds: [championEmbed({ champion, runnerUpName: runnerUpOf(matches), results })],
     files: [await winnerImage(champion, teamIn(final, championId))],
     allowedMentions: { users: env.devCommands ? [] : [championId] },
   });
+}
+
+/** The single-elimination bracket image for /bracket, with every known player's avatar. */
+export async function bracketImage(tournamentId: number): Promise<AttachmentBuilder> {
+  const tournament = getTournament(tournamentId)!;
+  const matches = listMatches(tournamentId);
+  const seeds = new Map(listTournamentPlayers(tournamentId).map((p, i) => [p.discord_id, i + 1]));
+
+  // The champion played in the final, so their avatar is among these.
+  const ids = [...new Set(matches.flatMap((m) => [m.p1_id, m.p2_id]).filter((id): id is string => id !== null))];
+  const avatars = new Map(
+    await Promise.all(ids.map(async (id) => [id, await fetchAvatar((await embedPlayer(id)).avatarUrl)] as const)),
+  );
+
+  const slot = (match: Match, side: "p1" | "p2"): BracketSlot => {
+    const id = side === "p1" ? match.p1_id : match.p2_id;
+    const games = listGames(match.id);
+    const series = seriesState(games, match.best_of);
+    // Best of 1: the game's goals once it's played. Longer series: games won once the match has started.
+    const score =
+      match.status === "pending"
+        ? null
+        : match.best_of === 1
+          ? (games[0]?.[side === "p1" ? "p1_score" : "p2_score"] ?? null)
+          : side === "p1"
+            ? series.p1Wins
+            : series.p2Wins;
+    return {
+      name: id ? playerName(id) : null,
+      placeholder: slotPlaceholder(match, matches, side),
+      avatar: id ? (avatars.get(id) ?? null) : null,
+      team: id && match.p1_team ? teamIn(match, id) : null,
+      seed: id ? (seeds.get(id) ?? null) : null,
+      score,
+      won: id !== null && match.winner_id === id,
+    };
+  };
+
+  const png = renderBracketImage(
+    matches.map((m) => ({ label: m.label, bestOf: m.best_of, status: m.status, p1: slot(m, "p1"), p2: slot(m, "p2") })),
+    tournament.winner_id
+      ? { name: playerName(tournament.winner_id), avatar: avatars.get(tournament.winner_id) ?? null }
+      : null,
+  );
+  return new AttachmentBuilder(Buffer.from(png), { name: BRACKET_FILE });
 }
