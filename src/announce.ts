@@ -1,10 +1,11 @@
-import { AttachmentBuilder } from "discord.js";
+import { AttachmentBuilder, type EmbedBuilder } from "discord.js";
 import { tournamentChannel } from "./channel.ts";
 import { env } from "./env.ts";
+import { seriesState, type SeriesState } from "./logic/series.ts";
 import { otherTeam } from "./logic/teams.ts";
-import { matchEmbed, type EmbedPlayer } from "./render/embeds.ts";
+import { championEmbed, matchEmbed, resultLine, type EmbedPlayer } from "./render/embeds.ts";
 import { renderVersusImage, VERSUS_FILE } from "./render/versus-image.ts";
-import type { Match } from "./store.ts";
+import { getPlayer, listGames, listMatches, type Match } from "./store.ts";
 
 // Static PNGs so animated avatars and webp still render in the versus image.
 const AVATAR_OPTIONS = { extension: "png", forceStatic: true, size: 256 } as const;
@@ -44,5 +45,50 @@ export async function announceLiveMatch(match: Match): Promise<void> {
     embeds: [matchEmbed({ label: match.label, bestOf: match.best_of, p1, p2, p1Wins: 0, p2Wins: 0 })],
     files: [image],
     allowedMentions: { users: env.devCommands ? [] : [p1.id, p2.id] },
+  });
+}
+
+/** The green "X wins" embed for a decided series, showing only the winner's avatar. */
+export async function seriesResultEmbed(match: Match, series: SeriesState): Promise<EmbedBuilder> {
+  const [p1, p2] = await Promise.all([embedPlayer(match.p1_id!), embedPlayer(match.p2_id!)]);
+  return matchEmbed({
+    label: match.label,
+    bestOf: match.best_of,
+    p1,
+    p2,
+    p1Wins: series.p1Wins,
+    p2Wins: series.p2Wins,
+    winnerId: match.winner_id,
+  });
+}
+
+/** Crowns the champion with a summary of every match, pinging only the champion (nobody in dev mode). */
+export async function announceChampion(tournamentId: number, championId: string): Promise<void> {
+  const name = (id: string) => getPlayer(id)?.display_name ?? id;
+  const matches = listMatches(tournamentId);
+  const final = matches.at(-1)!;
+  const runnerUp = final.p1_id === championId ? final.p2_id! : final.p1_id!;
+
+  const results = matches.map((m) => {
+    const games = listGames(m.id);
+    const series = seriesState(games, m.best_of);
+    const winnerIsP1 = m.p1_id === m.winner_id;
+    const loserId = winnerIsP1 ? m.p2_id! : m.p1_id!;
+    // Bo1: show the goals of the single game. Longer series: show games won.
+    const [p1, p2] = m.best_of === 1 ? [games[0]!.p1_score, games[0]!.p2_score] : [series.p1Wins, series.p2Wins];
+    return resultLine({
+      label: m.label,
+      winnerName: name(m.winner_id!),
+      loserName: name(loserId),
+      winnerScore: winnerIsP1 ? p1 : p2,
+      loserScore: winnerIsP1 ? p2 : p1,
+    });
+  });
+
+  const champion = await embedPlayer(championId);
+  await tournamentChannel().send({
+    content: `🏆 <@${championId}> wins the tournament!`,
+    embeds: [championEmbed({ champion, runnerUpName: name(runnerUp), results })],
+    allowedMentions: { users: env.devCommands ? [] : [championId] },
   });
 }
