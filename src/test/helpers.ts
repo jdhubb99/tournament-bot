@@ -61,8 +61,8 @@ export function fakeInteraction(opts: {
   user?: { id: string; name: string };
   cached?: boolean;
   replied?: boolean;
-  /** Value of a `user` option; `memberName` set means they're a server member. */
-  optionUser?: { id: string; name: string; memberName?: string };
+  /** User options by name; `memberName` set means they're a server member. */
+  optionUsers?: Record<string, { id: string; name: string; memberName?: string }>;
 }) {
   const user = opts.user ?? { id: "u1", name: "Player One" };
   return {
@@ -78,8 +78,14 @@ export function fakeInteraction(opts: {
     options: {
       getSubcommand: () => opts.subcommand ?? "start",
       getInteger: (name: string) => opts.integers?.[name] ?? null,
-      getUser: () => (opts.optionUser ? { id: opts.optionUser.id, displayName: opts.optionUser.name } : null),
-      getMember: () => (opts.optionUser?.memberName ? { displayName: opts.optionUser.memberName } : null),
+      getUser: (name: string) => {
+        const user = opts.optionUsers?.[name];
+        return user ? { id: user.id, displayName: user.name } : null;
+      },
+      getMember: (name: string) => {
+        const memberName = opts.optionUsers?.[name]?.memberName;
+        return memberName ? { displayName: memberName } : null;
+      },
     },
     inCachedGuild: () => opts.cached ?? true,
     isChatInputCommand: () => (opts.kind ?? "command") === "command",

@@ -17,7 +17,7 @@ async function send(winner: string, winnerScore: number, loserScore: number, rep
   const interaction = fakeInteraction({
     commandName: "report",
     user: { id: reporter, name: "Ref" },
-    optionUser: { id: winner, name: winner },
+    optionUsers: { winner: { id: winner, name: winner } },
     integers: { winner_score: winnerScore, loser_score: loserScore },
   });
   await report.execute(cast(interaction));
