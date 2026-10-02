@@ -107,11 +107,12 @@ Match status: `pending` → `live` → `done`.
 ### Round robin schedule and standings
 
 - Generate pairings with the circle method, then order them so nobody plays back-to-back where possible.
-- Standings order: series wins, then game wins, then goal differential, then head-to-head, then random.
+- Standings order: series wins, then game wins, then goal differential, then head-to-head (wins among just the tied players), then random. "Random" is the seed order, which was shuffled at the start: it's random, but the table doesn't reshuffle every time it's shown.
 - After all 10 league matches, the **top 2 in the standings play a final**. The tournament winner is the winner of that final, not the top of the table.
 - The 1st-place finisher is `p1` in the final (just for display order; there's no advantage).
 - The final row is created at tournament start with `play_order = 11`, `status = 'pending'`, and empty players. It gets filled in when the last league match closes, then goes live like any other match.
-- League standings are still saved and shown (embed and later image) so you can see who finished where.
+- League standings are computed from the games, never stored separately, and shown as an image in `/bracket` (the league table beside the final). When the league ends, the bot posts "The league is done! A and B go to the final." with the final table, then the final's "Up next".
+- League matches are labelled "Match 1" to "Match 10". Undoing the last league game empties the final again.
 
 ### Group stage (6–7 players)
 
@@ -303,13 +304,13 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 - [x] `/tournament cancel`
 
 ### Phase 5 — Round robin
-- [ ] Circle-method schedule with back-to-back avoidance
-- [ ] Standings and tiebreakers
-- [ ] Create the empty final match at start; fill in the top 2 when the last league match closes
-- [ ] Tournament winner = final winner; `winner_id` set only after the final
-- [ ] 5 players = round robin + final
-- [ ] Unit tests for schedule, standings, and final setup
-- [ ] Standings image for `/bracket`: the league table plus the top-2 final once the league is done (same style as the bracket image)
+- [x] Circle-method schedule with back-to-back avoidance
+- [x] Standings and tiebreakers
+- [x] Create the empty final match at start; fill in the top 2 when the last league match closes
+- [x] Tournament winner = final winner; `winner_id` set only after the final
+- [x] 5 players = round robin + final
+- [x] Unit tests for schedule, standings, and final setup
+- [x] Standings image for `/bracket`: the league table plus the top-2 final once the league is done (same style as the bracket image)
 
 **Done when:** a 5-player tournament runs 10 league matches, then a top-2 final, then crowns a champion.
 
@@ -329,7 +330,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 ### Phase 8 — Visuals
 - [x] SVG bracket layout for single elim (4 and 8 players, in `render/bracket-image.ts`): match cards with avatars ringed in team colors, seeds, scores (goals as numbers for a best of 1; games won as dots for a best of 3 or 5, with a key under the bracket when it mixes both), the live match outlined in red, the winning row marked in its team color, and the champion in gold
 - [x] PNG conversion, avatars, bundled font
-- [ ] Standings image for round robin (built in phase 5 along with the format)
+- [x] Standings image for round robin (built in phase 5 along with the format)
 - [ ] Edit-in-place bracket message after each match
 
 ### Phase 9 — Hosting
