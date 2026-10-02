@@ -111,7 +111,7 @@ Match status: `pending` → `live` → `done`.
 - After all 10 league matches, the **top 2 in the standings play a final**. The tournament winner is the winner of that final, not the top of the table.
 - The 1st-place finisher is `p1` in the final (just for display order; there's no advantage).
 - The final row is created at tournament start with `play_order = 11`, `status = 'pending'`, and empty players. It gets filled in when the last league match closes, then goes live like any other match.
-- League standings are computed from the games, never stored separately, and shown as an image in `/bracket` (the league table beside the final). When the league ends, the bot posts "The league is done! A and B go to the final." with the final table, then the final's "Up next".
+- League standings are computed from the games, never stored separately, and shown as an image in `/bracket` (the league table beside the final, with an "Up next" card under the table listing the live league match and the next 3, then "+N more", until the league ends). When the league ends, the bot posts "The league is done! A and B go to the final." with the final table, then the final's "Up next".
 - League matches are labelled "Match 1" to "Match 10". Undoing the last league game empties the final again.
 
 ### Group stage (6–7 players)
