@@ -1,7 +1,7 @@
 import { beforeEach, expect, it } from "bun:test";
 import { db } from "../db.ts";
 import { addTournamentPlayer, createTournament, getLiveMatch, recordGame, upsertPlayer } from "../store.ts";
-import { arg, cast, fakeInteraction, resetDb, startedTournament, useFakeChannel } from "../test/helpers.ts";
+import { arg, cast, fakeInteraction, resetDb, startedRoundRobin, startedTournament, useFakeChannel } from "../test/helpers.ts";
 import { bracket } from "./bracket.ts";
 
 beforeEach(() => {
@@ -58,4 +58,11 @@ it("leaves out the live line while nothing is live", async () => {
   const id = startedTournament();
   db.query("UPDATE matches SET status = 'pending' WHERE tournament_id = $id").run({ id });
   expect(arg((await run()).editReply).embeds[0].toJSON().description).toBeUndefined();
+});
+
+it("titles a round robin by its format", async () => {
+  startedRoundRobin();
+  const embed = arg((await run()).editReply).embeds[0].toJSON();
+  expect(embed.title).toBe("Rocket League 1v1 — Round robin + final, 5 players");
+  expect(embed.description).toStartWith("🔴 Live: **Match 1** (Bo1): ");
 });

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn, type Mock } from "bun:test";
 import {
   announceChampion,
+  announceLeagueFinished,
   announceLiveMatch,
   bracketImage,
   currentMatchPost,
@@ -10,7 +11,7 @@ import {
 } from "./announce.ts";
 import { useTournamentChannel } from "./channel.ts";
 import { getLiveMatch, getMatch, recordGame, type Match } from "./store.ts";
-import { arg, cast, fakeChannel, resetDb, startedTournament } from "./test/helpers.ts";
+import { arg, cast, fakeChannel, playLeague, resetDb, startedRoundRobin, startedTournament } from "./test/helpers.ts";
 
 const match: Match = {
   id: 1,
@@ -252,5 +253,35 @@ describe("currentMatchPost", () => {
       image: { url: "attachment://scoreboard.png" },
     });
     expect(file.name).toBe("scoreboard.png");
+  });
+});
+
+describe("round robin posts", () => {
+  let channel: ReturnType<typeof fakeChannel>;
+  beforeEach(() => {
+    resetDb();
+    channel = fakeChannel();
+    useTournamentChannel(cast(channel));
+  });
+
+  it("renders the league table for /bracket, before and after the league", async () => {
+    const id = startedRoundRobin();
+    const before = Buffer.from((await bracketImage(id)).attachment as Buffer);
+    playLeague(id);
+    const file = await bracketImage(id);
+    expect(file.name).toBe("bracket.png");
+    expect(before.equals(file.attachment as Buffer)).toBe(false);
+    expect(fetchSpy).toHaveBeenCalledTimes(10); // five avatars, twice
+  });
+
+  it("announces the end of the league with the table", async () => {
+    const id = startedRoundRobin();
+    playLeague(id);
+    await announceLeagueFinished(id);
+    const message = arg(channel.send);
+    expect(message.content).toBe("📊 The league is done! **A** and **B** go to the final.");
+    expect(message.embeds[0].toJSON().title).toBe("Final league table");
+    expect(message.files.map((f: { name: string }) => f.name)).toEqual(["bracket.png"]);
+    expect(message.allowedMentions).toEqual({ parse: [] });
   });
 });

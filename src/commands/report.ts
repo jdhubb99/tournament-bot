@@ -1,5 +1,5 @@
 import { MessageFlags, SlashCommandBuilder } from "discord.js";
-import { announceChampion, announceLiveMatch, matchResult, seriesUpdate } from "../announce.ts";
+import { announceChampion, announceLeagueFinished, announceLiveMatch, matchResult, seriesUpdate } from "../announce.ts";
 import { checkReport } from "../logic/series.ts";
 import { randomTeam } from "../logic/teams.ts";
 import { getLiveMatch, getOpenTournament, getPlayer, recordGame } from "../store.ts";
@@ -67,6 +67,7 @@ export const report: Command = {
       allowedMentions: { parse: [] },
     });
 
+    if (outcome.leagueFinished) await announceLeagueFinished(match.tournament_id);
     if (outcome.next) await announceLiveMatch(outcome.next);
     if (outcome.championId) await announceChampion(match.tournament_id, outcome.championId);
   },

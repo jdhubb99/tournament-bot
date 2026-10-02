@@ -5,7 +5,7 @@ import { getOpenTournament, listFinishedTournaments, listMatches, listTournament
 import { FORMAT_NAMES, liveLineFor } from "../views.ts";
 import type { Command } from "./types.ts";
 
-// TODO(phase 5–6): round robin and groups need their own standings image.
+// TODO(phase 6): groups need their own image (two group tables plus the playoffs).
 export const bracket: Command = {
   data: new SlashCommandBuilder().setName("bracket").setDescription("Show the bracket: live match, what's next, and results"),
   tournamentOnly: true,
