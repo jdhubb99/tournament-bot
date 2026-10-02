@@ -1,7 +1,7 @@
 import { AttachmentBuilder, type EmbedBuilder } from "discord.js";
 import { tournamentChannel } from "./channel.ts";
 import { env } from "./env.ts";
-import { describeSeries, type SeriesState } from "./logic/series.ts";
+import { describeSeries, seriesState, type SeriesState } from "./logic/series.ts";
 import { otherTeam, type Team } from "./logic/teams.ts";
 import {
   championEmbed,
@@ -18,8 +18,9 @@ import {
   VERSUS_FILE,
   WINNER_FILE,
 } from "./render/match-images.ts";
-import { listGames, listMatches, type Match } from "./store.ts";
-import { resultLineFor, runnerUpOf } from "./views.ts";
+import { BRACKET_FILE, renderBracketImage, type BracketSlot } from "./render/bracket-image.ts";
+import { getTournament, listGames, listMatches, listTournamentPlayers, type Match } from "./store.ts";
+import { playerName, resultLineFor, runnerUpOf, slotPlaceholder } from "./views.ts";
 
 // Static PNGs so animated avatars and webp still render in the versus image.
 const AVATAR_OPTIONS = { extension: "png", forceStatic: true, size: 256 } as const;
@@ -122,4 +123,49 @@ export async function announceChampion(tournamentId: number, championId: string)
     files: [await winnerImage(champion, teamIn(final, championId))],
     allowedMentions: { users: env.devCommands ? [] : [championId] },
   });
+}
+
+/** The single-elimination bracket image for /bracket, with every known player's avatar. */
+export async function bracketImage(tournamentId: number): Promise<AttachmentBuilder> {
+  const tournament = getTournament(tournamentId)!;
+  const matches = listMatches(tournamentId);
+  const seeds = new Map(listTournamentPlayers(tournamentId).map((p, i) => [p.discord_id, i + 1]));
+
+  // The champion played in the final, so their avatar is among these.
+  const ids = [...new Set(matches.flatMap((m) => [m.p1_id, m.p2_id]).filter((id): id is string => id !== null))];
+  const avatars = new Map(
+    await Promise.all(ids.map(async (id) => [id, await fetchAvatar((await embedPlayer(id)).avatarUrl)] as const)),
+  );
+
+  const slot = (match: Match, side: "p1" | "p2"): BracketSlot => {
+    const id = side === "p1" ? match.p1_id : match.p2_id;
+    const games = listGames(match.id);
+    const series = seriesState(games, match.best_of);
+    // Best of 1: the game's goals once it's played. Longer series: games won once the match has started.
+    const score =
+      match.status === "pending"
+        ? null
+        : match.best_of === 1
+          ? (games[0]?.[side === "p1" ? "p1_score" : "p2_score"] ?? null)
+          : side === "p1"
+            ? series.p1Wins
+            : series.p2Wins;
+    return {
+      name: id ? playerName(id) : null,
+      placeholder: slotPlaceholder(match, matches, side),
+      avatar: id ? (avatars.get(id) ?? null) : null,
+      team: id && match.p1_team ? teamIn(match, id) : null,
+      seed: id ? (seeds.get(id) ?? null) : null,
+      score,
+      won: id !== null && match.winner_id === id,
+    };
+  };
+
+  const png = renderBracketImage(
+    matches.map((m) => ({ label: m.label, bestOf: m.best_of, status: m.status, p1: slot(m, "p1"), p2: slot(m, "p2") })),
+    tournament.winner_id
+      ? { name: playerName(tournament.winner_id), avatar: avatars.get(tournament.winner_id) ?? null }
+      : null,
+  );
+  return new AttachmentBuilder(Buffer.from(png), { name: BRACKET_FILE });
 }

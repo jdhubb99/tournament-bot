@@ -1,5 +1,6 @@
 import { EmbedBuilder } from "discord.js";
 import { seriesState, winsNeeded, type GameScore } from "../logic/series.ts";
+import { BRACKET_FILE } from "./bracket-image.ts";
 import { SCOREBOARD_FILE, VERSUS_FILE, WINNER_FILE } from "./match-images.ts";
 
 const LIVE_RED = 0xed4245;
@@ -119,12 +120,10 @@ export function championEmbed(opts: { champion: EmbedPlayer; runnerUpName: strin
     );
 }
 
-/** /bracket: what's live, what's queued, and what's been played. Empty sections are left out. */
-export function bracketEmbed(opts: { title: string; live: string | null; upNext: string[]; results: string[] }): EmbedBuilder {
-  const embed = new EmbedBuilder().setColor(BLURPLE).setTitle(opts.title);
-  if (opts.live) embed.addFields({ name: "🔴 Live", value: opts.live });
-  if (opts.upNext.length) embed.addFields({ name: "Up next", value: opts.upNext.join("\n") });
-  if (opts.results.length) embed.addFields({ name: "Results", value: opts.results.join("\n") });
+/** /bracket: the attached bracket image, with the live match (and its series standing) as text. */
+export function bracketEmbed(opts: { title: string; live: string | null }): EmbedBuilder {
+  const embed = new EmbedBuilder().setColor(BLURPLE).setTitle(opts.title).setImage(`attachment://${BRACKET_FILE}`);
+  if (opts.live) embed.setDescription(`🔴 Live: ${opts.live}`);
   return embed;
 }
 

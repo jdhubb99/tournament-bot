@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn, type Mock } from "bun:test";
-import { announceChampion, announceLiveMatch, fetchAvatar, matchResult, seriesUpdate } from "./announce.ts";
+import { announceChampion, announceLiveMatch, bracketImage, fetchAvatar, matchResult, seriesUpdate } from "./announce.ts";
 import { useTournamentChannel } from "./channel.ts";
 import { getLiveMatch, getMatch, recordGame, type Match } from "./store.ts";
 import { arg, cast, fakeChannel, resetDb, startedTournament } from "./test/helpers.ts";
@@ -189,5 +189,34 @@ describe("results", () => {
     db.exec("PRAGMA foreign_keys = OFF; DELETE FROM players WHERE discord_id = 'c'; PRAGMA foreign_keys = ON;");
     await announceChampion(id, last.championId!);
     expect(arg(channel.send).embeds[0].toJSON().fields[0].value).toBe("c");
+  });
+});
+
+describe("bracketImage", () => {
+  beforeEach(() => {
+    resetDb();
+    useTournamentChannel(cast(fakeChannel({ members: { a: "Alice" } })));
+  });
+
+  it("renders the bracket with every known player's avatar", async () => {
+    const id = startedTournament({ semis: 3, final: 3 });
+    recordGame(getLiveMatch(id)!, 3, 1, "r", "goons"); // SF1 live at 1–0
+    const file = await bracketImage(id);
+    expect(file.name).toBe("bracket.png");
+    expect([...(file.attachment as Buffer).subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+    expect(fetchSpy.mock.calls.map((c) => c[0]).sort()).toEqual([
+      "https://cdn.test/member/a.png",
+      "https://cdn.test/user/b.png",
+      "https://cdn.test/user/c.png",
+      "https://cdn.test/user/d.png",
+    ]);
+  });
+
+  it("changes as results come in and draws the champion at the end", async () => {
+    const id = startedTournament({ semis: 1, final: 1 });
+    const before = Buffer.from((await bracketImage(id)).attachment as Buffer);
+    for (let i = 0; i < 3; i++) recordGame(getLiveMatch(id)!, 2, 1, "r", "goons");
+    const after = Buffer.from((await bracketImage(id)).attachment as Buffer);
+    expect(before.equals(after)).toBe(false);
   });
 });

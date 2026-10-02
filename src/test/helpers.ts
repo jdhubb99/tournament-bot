@@ -1,5 +1,6 @@
 import { mock } from "bun:test";
 import { ChannelType } from "discord.js";
+import { useTournamentChannel } from "../channel.ts";
 import { db } from "../db.ts";
 import { singleElim } from "../logic/bracket.ts";
 import { addTournamentPlayer, createTournament, startTournament, upsertPlayer } from "../store.ts";
@@ -48,6 +49,13 @@ export function fakeChannel(opts: { members?: Record<string, string>; permission
       },
     },
   };
+}
+
+/** Installs a fresh fake #tournaments channel and returns it. */
+export function useFakeChannel(opts: Parameters<typeof fakeChannel>[0] = {}) {
+  const channel = fakeChannel(opts);
+  useTournamentChannel(cast(channel));
+  return channel;
 }
 
 /** A slash command or button interaction with every reply method mocked. */

@@ -38,14 +38,10 @@ export function liveLineFor(match: Match): string {
   return `${line} · ${describeSeries(seriesState(listGames(match.id), match.best_of), p1, p2)}`;
 }
 
-/** "Final (Bo3): A vs Winner of Semifinal 2", naming the feeder match for a slot not filled yet. */
-export function queueLineFor(match: Match, all: readonly Match[]): string {
-  const slot = (playerId: string | null, side: "p1" | "p2") => {
-    if (playerId) return playerName(playerId);
-    const feeder = all.find((m) => m.next_match_id === match.id && m.next_slot === side);
-    return feeder ? `Winner of ${feeder.label}` : "TBD";
-  };
-  return `${match.label} (Bo${match.best_of}): ${slot(match.p1_id, "p1")} vs ${slot(match.p2_id, "p2")}`;
+/** What an empty slot is waiting for: "Winner of Semifinal 2", or "TBD" if nothing feeds it. */
+export function slotPlaceholder(match: Match, all: readonly Match[], side: "p1" | "p2"): string {
+  const feeder = all.find((m) => m.next_match_id === match.id && m.next_slot === side);
+  return feeder ? `Winner of ${feeder.label}` : "TBD";
 }
 
 /** The loser of the last match (the final) of a finished tournament. */

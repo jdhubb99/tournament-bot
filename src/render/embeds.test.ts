@@ -133,15 +133,10 @@ describe("championEmbed", () => {
 });
 
 describe("bracketEmbed", () => {
-  it("shows only the sections that have something in them", () => {
-    const full = bracketEmbed({ title: "T", live: "**Final**", upNext: ["x", "y"], results: ["r"] }).toJSON();
-    expect(full.title).toBe("T");
-    expect(full.fields).toEqual([
-      { name: "🔴 Live", value: "**Final**" },
-      { name: "Up next", value: "x\ny" },
-      { name: "Results", value: "r" },
-    ]);
-    expect(bracketEmbed({ title: "T", live: null, upNext: [], results: [] }).toJSON().fields).toBeUndefined();
+  it("shows the attached bracket image, with the live match when there is one", () => {
+    const embed = bracketEmbed({ title: "T", live: "**Final** (Bo3): A vs D" }).toJSON();
+    expect(embed).toMatchObject({ title: "T", description: "🔴 Live: **Final** (Bo3): A vs D", image: { url: "attachment://bracket.png" } });
+    expect(bracketEmbed({ title: "T", live: null }).toJSON().description).toBeUndefined();
   });
 });
 

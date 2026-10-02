@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { db } from "./db.ts";
 import { getLiveMatch, listMatches, recordGame } from "./store.ts";
 import { resetDb, startedTournament } from "./test/helpers.ts";
-import { FORMAT_NAMES, liveLineFor, playerName, queueLineFor, resultLineFor, runnerUpOf } from "./views.ts";
+import { FORMAT_NAMES, liveLineFor, playerName, resultLineFor, runnerUpOf, slotPlaceholder } from "./views.ts";
 
 beforeEach(resetDb);
 
@@ -53,15 +53,14 @@ describe("views", () => {
     expect(liveLineFor(live(bo1))).toBe("**Semifinal 1** (Bo1): A vs B");
   });
 
-  it("names the feeder match for empty slots in the queue", () => {
+  it("names the feeder match for an empty slot", () => {
     const id = startedTournament();
-    recordGame(live(id), 3, 1, "r", "goons"); // A into the final's p1
     const matches = listMatches(id);
-    expect(queueLineFor(matches[2]!, matches)).toBe("Final (Bo3): A vs Winner of Semifinal 2");
-    expect(queueLineFor(matches[1]!, matches)).toBe("Semifinal 2 (Bo1): C vs D");
+    expect(slotPlaceholder(matches[2]!, matches, "p1")).toBe("Winner of Semifinal 1");
+    expect(slotPlaceholder(matches[2]!, matches, "p2")).toBe("Winner of Semifinal 2");
 
     db.query("UPDATE matches SET next_match_id = NULL").run();
     const unlinked = listMatches(id);
-    expect(queueLineFor(unlinked[2]!, unlinked)).toBe("Final (Bo3): A vs TBD");
+    expect(slotPlaceholder(unlinked[2]!, unlinked, "p2")).toBe("TBD");
   });
 });
