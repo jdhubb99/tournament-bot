@@ -236,7 +236,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 | `/tournament cancel` | Cancel the active tournament (asks the person for private confirmation first, then announces it in the channel) |
 | `/report winner winner_score loser_score` | Record a game in the live match |
 | `/undo` | Remove the last reported game |
-| `/bracket` | Show live match, upcoming queue, results so far (round robin and groups: also current standings) |
+| `/bracket` | Bracket image (live match, queue, results, champion) plus the live match as text. Shows the last finished tournament when none is running (round robin and groups: a standings image instead) |
 | `/history` | Past tournaments: date, format, winner, runner-up |
 | `/leaderboard` | Titles, series record, game record, goal differential |
 | `/stats @player` | Personal stats and head-to-head records |
@@ -307,6 +307,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 - [ ] Tournament winner = final winner; `winner_id` set only after the final
 - [ ] 5 players = round robin + final
 - [ ] Unit tests for schedule, standings, and final setup
+- [ ] Standings image for `/bracket`: the league table plus the top-2 final once the league is done (same style as the bracket image)
 
 **Done when:** a 5-player tournament runs 10 league matches, then a top-2 final, then crowns a champion.
 
@@ -324,9 +325,9 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 - [ ] `game` filter plumbed through queries
 
 ### Phase 8 — Visuals
-- [ ] SVG bracket layout for single elim
-- [ ] PNG conversion, avatars, bundled font (the versus image in `render/match-images.ts` already does all three for one match)
-- [ ] Standings image for round robin
+- [x] SVG bracket layout for single elim (4 and 8 players, in `render/bracket-image.ts`): match cards with avatars ringed in team colors, seeds, scores, the live match outlined in red, the winning row marked in its team color, and the champion in gold
+- [x] PNG conversion, avatars, bundled font
+- [ ] Standings image for round robin (built in phase 5 along with the format)
 - [ ] Edit-in-place bracket message after each match
 
 ### Phase 9 — Hosting
