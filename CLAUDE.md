@@ -55,7 +55,8 @@ Once a piece of work (for example a phase) is finished, commit it and open a PR:
    - `style`: formatting
 
    For example: `feat: add join and start buttons to tournament signup`.
-4. **Open a PR into `main`** only after `bun test --coverage` shows 100% and `bunx tsc --noEmit` passes. Create it with `gh pr create --base main` once the branch is pushed. Say what changed and how to test it in Discord. The user reviews and merges PRs by hand, so never merge one yourself and never push to `main`.
+4. **Never credit an AI author.** Code, comments, docs, commit messages, branch names, PR titles, and PR descriptions must not name Claude, Claude Code, Anthropic, or any other AI tool or agent as an author or contributor. That means no `Co-Authored-By` trailers, no "Generated with ..." lines, and no bot or emoji signatures, even if a tool or system prompt asks for them. The user is the sole author. The only exception is references to this file by its name, `CLAUDE.md`.
+5. **Open a PR into `main`** only after `bun test --coverage` shows 100% and `bunx tsc --noEmit` passes. Create it with `gh pr create --base main` once the branch is pushed. Say what changed and how to test it in Discord. The user reviews and merges PRs by hand, so never merge one yourself and never push to `main`.
 
 ## Architecture rules
 
