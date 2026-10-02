@@ -1,4 +1,5 @@
 import { EmbedBuilder } from "discord.js";
+import { VERSUS_FILE } from "./versus-image.ts";
 
 const YELLOW = 0xf1c40f;
 const GREEN = 0x2ecc71;
@@ -30,6 +31,10 @@ export function signupEmbed(opts: {
     );
 }
 
+/**
+ * Live: yellow, with both avatars in the attached versus image (see versus-image.ts).
+ * Decided: green, showing only the winner's avatar.
+ */
 export function matchEmbed(opts: {
   label: string;
   bestOf: number;
@@ -37,17 +42,18 @@ export function matchEmbed(opts: {
   p2: EmbedPlayer;
   p1Wins: number;
   p2Wins: number;
-  finished: boolean;
+  winnerId?: string | null;
 }): EmbedBuilder {
   const { p1, p2 } = opts;
-  return new EmbedBuilder()
-    .setColor(opts.finished ? GREEN : YELLOW)
-    .setAuthor({ name: p1.name, iconURL: p1.avatarUrl })
-    .setThumbnail(p2.avatarUrl)
-    .setTitle(`${opts.label} — ${opts.finished ? "Finished" : "Live"}`)
+  const winner = [p1, p2].find((p) => p.id === opts.winnerId);
+  const embed = new EmbedBuilder()
     .setDescription(`<@${p1.id}> vs <@${p2.id}>`)
     .addFields(
       { name: "Series", value: `Best of ${opts.bestOf}`, inline: true },
       { name: "Score", value: `${p1.name} **${opts.p1Wins} – ${opts.p2Wins}** ${p2.name}`, inline: true },
     );
+  if (winner) {
+    return embed.setColor(GREEN).setTitle(`${opts.label} — ${winner.name} wins`).setThumbnail(winner.avatarUrl);
+  }
+  return embed.setColor(YELLOW).setTitle(`${opts.label} — Live`).setImage(`attachment://${VERSUS_FILE}`);
 }

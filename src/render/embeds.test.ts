@@ -26,12 +26,13 @@ describe("matchEmbed", () => {
     p2: { id: "b", name: "Bob", avatarUrl: "https://cdn.test/b.png" },
   };
 
-  it("is yellow with both avatars while live", () => {
-    const embed = matchEmbed({ ...players, label: "Semifinal 1", bestOf: 3, p1Wins: 1, p2Wins: 0, finished: false }).toJSON();
+  it("is yellow with the versus image while live", () => {
+    const embed = matchEmbed({ ...players, label: "Semifinal 1", bestOf: 3, p1Wins: 1, p2Wins: 0 }).toJSON();
     expect(embed.color).toBe(0xf1c40f);
     expect(embed.title).toBe("Semifinal 1 — Live");
-    expect(embed.author).toEqual({ name: "Alice", icon_url: "https://cdn.test/a.png" });
-    expect(embed.thumbnail?.url).toBe("https://cdn.test/b.png");
+    expect(embed.image?.url).toBe("attachment://versus.png");
+    expect(embed.thumbnail).toBeUndefined();
+    expect(embed.author).toBeUndefined();
     expect(embed.description).toBe("<@a> vs <@b>");
     expect(embed.fields).toEqual([
       { name: "Series", value: "Best of 3", inline: true },
@@ -39,9 +40,11 @@ describe("matchEmbed", () => {
     ]);
   });
 
-  it("is green when finished", () => {
-    const embed = matchEmbed({ ...players, label: "Final", bestOf: 1, p1Wins: 0, p2Wins: 1, finished: true }).toJSON();
+  it("is green with only the winner's avatar once decided", () => {
+    const embed = matchEmbed({ ...players, label: "Final", bestOf: 3, p1Wins: 1, p2Wins: 2, winnerId: "b" }).toJSON();
     expect(embed.color).toBe(0x2ecc71);
-    expect(embed.title).toBe("Final — Finished");
+    expect(embed.title).toBe("Final — Bob wins");
+    expect(embed.thumbnail?.url).toBe("https://cdn.test/b.png");
+    expect(embed.image).toBeUndefined();
   });
 });

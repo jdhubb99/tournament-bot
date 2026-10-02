@@ -146,5 +146,7 @@ describe("signup buttons", () => {
     expect(closed.embeds[0].toJSON().title).toBe("Rocket League 1v1 — Signup closed");
     expect(closed.components).toEqual([]);
     expect(arg(channel.send).content).toBe(`Up next: <@${seeded[0]}> vs <@${seeded[1]}> (Bo3)`);
+    // Avatar downloads fail offline, so the versus image falls back to placeholders.
+    expect(arg(channel.send).files[0].name).toBe("versus.png");
   });
 });
