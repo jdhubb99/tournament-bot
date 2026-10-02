@@ -1,0 +1,136 @@
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  MessageFlags,
+  SlashCommandBuilder,
+  type ButtonInteraction,
+  type ChatInputCommandInteraction,
+} from "discord.js";
+import { announceLiveMatch } from "../announce.ts";
+import { singleElim } from "../logic/bracket.ts";
+import { shuffle } from "../logic/random.ts";
+import { signupEmbed } from "../render/embeds.ts";
+import {
+  addTournamentPlayer,
+  createTournament,
+  getLiveMatch,
+  getOpenTournament,
+  getTournament,
+  listTournamentPlayers,
+  startTournament,
+  upsertPlayer,
+  type Tournament,
+} from "../store.ts";
+import type { Command } from "./types.ts";
+
+const MIN_PLAYERS = 4;
+export const MAX_PLAYERS = 8;
+const SERIES_CHOICES = [1, 3, 5].map((n) => ({ name: `Best of ${n}`, value: n }));
+
+const ephemeral = (content: string) => ({ content, flags: MessageFlags.Ephemeral }) as const;
+
+function signupMessage(tournament: Tournament, closed: boolean) {
+  const embed = signupEmbed({
+    players: listTournamentPlayers(tournament.id),
+    semisBestOf: tournament.semis_best_of,
+    finalBestOf: tournament.final_best_of,
+    maxPlayers: MAX_PLAYERS,
+    closed,
+  });
+  const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`tournament:join:${tournament.id}`).setLabel("Join").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`tournament:start:${tournament.id}`).setLabel("Start").setStyle(ButtonStyle.Success),
+  );
+  return { embeds: [embed], components: closed ? [] : [buttons] };
+}
+
+async function start(interaction: ChatInputCommandInteraction<"cached">) {
+  if (getOpenTournament(interaction.guildId)) {
+    await interaction.reply(ephemeral("A tournament is already running. Finish or cancel it first."));
+    return;
+  }
+  const id = createTournament(interaction.guildId, {
+    semis: interaction.options.getInteger("semis") ?? 1,
+    final: interaction.options.getInteger("final") ?? 3,
+  });
+  await interaction.reply(signupMessage(getTournament(id)!, false));
+}
+
+export type JoinResult = "joined" | "already" | "full";
+
+/** Adds a player to a tournament in signup, enforcing the cap. Shared by the Join button and /dev join. */
+export function joinSignup(tournamentId: number, playerId: string, displayName: string): JoinResult {
+  const joined = listTournamentPlayers(tournamentId);
+  if (joined.some((p) => p.discord_id === playerId)) return "already";
+  if (joined.length >= MAX_PLAYERS) return "full";
+  upsertPlayer(playerId, displayName);
+  addTournamentPlayer(tournamentId, playerId);
+  return "joined";
+}
+
+export const FULL_MESSAGE = `The bot supports up to ${MAX_PLAYERS} players, and this tournament is full.`;
+
+async function join(interaction: ButtonInteraction<"cached">, tournament: Tournament) {
+  switch (joinSignup(tournament.id, interaction.user.id, interaction.member.displayName)) {
+    case "already":
+      return void (await interaction.deferUpdate());
+    case "full":
+      return void (await interaction.reply(ephemeral(FULL_MESSAGE)));
+    case "joined":
+      return void (await interaction.update(signupMessage(tournament, false)));
+  }
+}
+
+async function begin(interaction: ButtonInteraction<"cached">, tournament: Tournament) {
+  const players = listTournamentPlayers(tournament.id);
+  if (players.length < MIN_PLAYERS) {
+    await interaction.reply(ephemeral(`At least ${MIN_PLAYERS} players are needed to start (${players.length} joined).`));
+    return;
+  }
+  // TODO(phases 5–6): round robin for 5, groups for 6–7, 8-player single elim.
+  if (players.length !== 4) {
+    await interaction.reply(ephemeral(`Only 4-player tournaments are supported so far (${players.length} joined).`));
+    return;
+  }
+
+  const seeded = shuffle(players.map((p) => p.discord_id));
+  const plan = singleElim(seeded, { semis: tournament.semis_best_of, final: tournament.final_best_of });
+  startTournament(tournament.id, "single_elim", seeded, plan);
+
+  await interaction.update(signupMessage(tournament, true));
+  await announceLiveMatch(getLiveMatch(tournament.id)!);
+}
+
+export const tournament: Command = {
+  data: new SlashCommandBuilder()
+    .setName("tournament")
+    .setDescription("Run a Rocket League 1v1 tournament")
+    .addSubcommand((sub) =>
+      sub
+        .setName("start")
+        .setDescription("Open signup with Join and Start buttons")
+        .addIntegerOption((o) => o.setName("semis").setDescription("Semifinal series length (default Bo1)").addChoices(...SERIES_CHOICES))
+        .addIntegerOption((o) => o.setName("final").setDescription("Final series length (default Bo3)").addChoices(...SERIES_CHOICES)),
+    ),
+  tournamentOnly: true,
+
+  async execute(interaction) {
+    if (!interaction.inCachedGuild()) return;
+    switch (interaction.options.getSubcommand()) {
+      case "start":
+        return start(interaction);
+    }
+  },
+
+  async button(interaction, [action, idArg]) {
+    if (!interaction.inCachedGuild()) return;
+    const found = getTournament(Number(idArg));
+    if (!found || found.status !== "signup") {
+      await interaction.reply(ephemeral("Signup for this tournament is closed."));
+      return;
+    }
+    if (action === "join") return join(interaction, found);
+    if (action === "start") return begin(interaction, found);
+  },
+};
