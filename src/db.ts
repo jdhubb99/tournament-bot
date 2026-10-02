@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS matches (
   winner_id     TEXT REFERENCES players(discord_id),
   next_match_id INTEGER REFERENCES matches(id),
   next_slot     TEXT CHECK (next_slot IN ('p1','p2')),
-  status        TEXT NOT NULL CHECK (status IN ('pending','live','done'))
+  status        TEXT NOT NULL CHECK (status IN ('pending','live','done')),
+  p1_team       TEXT CHECK (p1_team IN ('goons','gooners'))  -- set when the match goes live; p2 is on the other team
 );
 
 CREATE TABLE IF NOT EXISTS games (
@@ -61,7 +62,16 @@ export function openDb(path: string): Database {
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA foreign_keys = ON;");
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+/** Brings databases created by older versions up to the current schema. Each step is idempotent. */
+function migrate(db: Database): void {
+  const matchColumns = db.query<{ name: string }, []>("PRAGMA table_info(matches)").all().map((c) => c.name);
+  if (!matchColumns.includes("p1_team")) {
+    db.exec("ALTER TABLE matches ADD COLUMN p1_team TEXT CHECK (p1_team IN ('goons','gooners'))");
+  }
 }
 
 /** DB_PATH overrides the location (e.g. ":memory:" for tests and scripts that must not touch real data). */

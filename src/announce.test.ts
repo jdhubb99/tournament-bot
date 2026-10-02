@@ -17,6 +17,7 @@ const match: Match = {
   next_match_id: 3,
   next_slot: "p1",
   status: "live",
+  p1_team: "gooners",
 };
 
 let fetchSpy: Mock<typeof fetch>;

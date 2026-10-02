@@ -2,6 +2,7 @@
 // interleaving with other interactions; multi-step writes use transactions.
 import { db } from "./db.ts";
 import type { PlannedMatch, SeriesLengths } from "./logic/bracket.ts";
+import type { Team } from "./logic/teams.ts";
 
 export type TournamentStatus = "signup" | "active" | "done" | "cancelled";
 export type Format = "single_elim" | "round_robin" | "groups";
@@ -36,6 +37,8 @@ export interface Match {
   next_match_id: number | null;
   next_slot: "p1" | "p2" | null;
   status: "pending" | "live" | "done";
+  /** p1's team, set when the match goes live; p2 is on the other team. */
+  p1_team: Team | null;
 }
 
 export function upsertPlayer(discordId: string, displayName: string): void {
@@ -92,16 +95,16 @@ export function listTournamentPlayers(tournamentId: number): Player[] {
 
 /**
  * Locks signup: stores seeds, creates every match in the plan (playoff rows with empty
- * players included), links advancement, and makes the first match live.
+ * players included), links advancement, and makes the first match live with p1 on `firstP1Team`.
  */
 export const startTournament = db.transaction(
-  (tournamentId: number, format: Format, seeded: string[], plan: PlannedMatch[]): void => {
+  (tournamentId: number, format: Format, seeded: string[], plan: PlannedMatch[], firstP1Team: Team): void => {
     const setSeed = db.query("UPDATE tournament_players SET seed = $seed WHERE tournament_id = $t AND player_id = $p");
     seeded.forEach((playerId, i) => setSeed.run({ seed: i + 1, t: tournamentId, p: playerId }));
 
     const insert = db.query(
       `INSERT INTO matches (tournament_id, round, play_order, label, p1_id, p2_id, best_of, status)
-       VALUES ($t, $round, $order, $label, $p1, $p2, $bestOf, $status)`,
+       VALUES ($t, $round, $order, $label, $p1, $p2, $bestOf, 'pending')`,
     );
     const ids = plan.map((m, i) =>
       Number(
@@ -113,7 +116,6 @@ export const startTournament = db.transaction(
           p1: m.p1,
           p2: m.p2,
           bestOf: m.bestOf,
-          status: i === 0 ? "live" : "pending",
         }).lastInsertRowid,
       ),
     );
@@ -123,12 +125,19 @@ export const startTournament = db.transaction(
       if (m.next) link.run({ next: ids[m.next.index]!, slot: m.next.slot, id: ids[i]! });
     });
 
+    goLive(ids[0]!, firstP1Team);
+
     db.query("UPDATE tournaments SET status = 'active', format = $format WHERE id = $id").run({
       format,
       id: tournamentId,
     });
   },
 );
+
+/** Makes a match the live one and records the teams for its whole series. */
+export function goLive(matchId: number, p1Team: Team): void {
+  db.query("UPDATE matches SET status = 'live', p1_team = $team WHERE id = $id").run({ team: p1Team, id: matchId });
+}
 
 export function getLiveMatch(tournamentId: number): Match | null {
   return db

@@ -141,6 +141,7 @@ describe("signup buttons", () => {
 
     const live = getLiveMatch(id)!;
     expect(live).toMatchObject({ label: "Semifinal 1", p1_id: seeded[0], p2_id: seeded[1], best_of: 3 });
+    expect(["goons", "gooners"]).toContain(live.p1_team!);
 
     const closed = arg(interaction.update);
     expect(closed.embeds[0].toJSON().title).toBe("Rocket League 1v1 — Signup closed");

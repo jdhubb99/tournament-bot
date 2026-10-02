@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { Database } from "bun:sqlite";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,6 +21,28 @@ describe("openDb", () => {
     try {
       openDb(join(dir, "x.db")).close();
       expect(() => openDb(join(dir, "x.db")).close()).not.toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("migrations", () => {
+  it("adds p1_team to a matches table created before teams existed", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tournament-bot-"));
+    const path = join(dir, "old.db");
+    try {
+      const old = new Database(path);
+      old.exec(`CREATE TABLE matches (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, tournament_id INTEGER NOT NULL, round INTEGER NOT NULL,
+        play_order INTEGER NOT NULL, label TEXT NOT NULL, p1_id TEXT, p2_id TEXT, best_of INTEGER NOT NULL DEFAULT 1,
+        winner_id TEXT, next_match_id INTEGER, next_slot TEXT, status TEXT NOT NULL)`);
+      old.close();
+
+      const db = openDb(path);
+      const columns = db.query<{ name: string }, []>("PRAGMA table_info(matches)").all().map((c) => c.name);
+      expect(columns).toContain("p1_team");
+      db.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

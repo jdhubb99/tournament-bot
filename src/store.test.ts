@@ -73,7 +73,7 @@ describe("startTournament", () => {
   it("stores seeds, creates linked matches, and makes the first one live", () => {
     const id = signup("g", ["a", "b", "c", "d"]);
     const seeded = ["d", "b", "a", "c"];
-    store.startTournament(id, "single_elim", seeded, singleElim(seeded, lengths));
+    store.startTournament(id, "single_elim", seeded, singleElim(seeded, lengths), "gooners");
 
     expect(store.getTournament(id)).toMatchObject({ status: "active", format: "single_elim" });
     expect(store.listTournamentPlayers(id).map((p) => p.discord_id)).toEqual(seeded);
@@ -81,11 +81,11 @@ describe("startTournament", () => {
     const matches = db
       .query<store.Match, []>("SELECT * FROM matches ORDER BY play_order")
       .all()
-      .map((m) => [m.label, m.p1_id, m.p2_id, m.best_of, m.status, m.next_match_id, m.next_slot]);
+      .map((m) => [m.label, m.p1_id, m.p2_id, m.best_of, m.status, m.next_match_id, m.next_slot, m.p1_team]);
     expect(matches).toEqual([
-      ["Semifinal 1", "d", "b", 3, "live", 3, "p1"],
-      ["Semifinal 2", "a", "c", 3, "pending", 3, "p2"],
-      ["Final", null, null, 5, "pending", null, null],
+      ["Semifinal 1", "d", "b", 3, "live", 3, "p1", "gooners"],
+      ["Semifinal 2", "a", "c", 3, "pending", 3, "p2", null],
+      ["Final", null, null, 5, "pending", null, null, null],
     ]);
     expect(store.getLiveMatch(id)?.label).toBe("Semifinal 1");
   });
@@ -94,9 +94,18 @@ describe("startTournament", () => {
     const id = signup("g", ["a", "b", "c", "d"]);
     const plan = singleElim(["a", "b", "c", "d"], lengths);
     plan[2]!.p1 = "not-a-player"; // violates the players foreign key
-    expect(() => store.startTournament(id, "single_elim", ["a", "b", "c", "d"], plan)).toThrow();
+    expect(() => store.startTournament(id, "single_elim", ["a", "b", "c", "d"], plan, "goons")).toThrow();
     expect(store.getTournament(id)?.status).toBe("signup");
     expect(db.query("SELECT count(*) AS n FROM matches").get()).toEqual({ n: 0 });
+  });
+
+  it("records the teams when a match goes live", () => {
+    const id = signup("g", ["a", "b", "c", "d"]);
+    store.startTournament(id, "single_elim", ["a", "b", "c", "d"], singleElim(["a", "b", "c", "d"], lengths), "goons");
+    const semi2 = db.query<{ id: number }, []>("SELECT id FROM matches WHERE label = 'Semifinal 2'").get()!;
+    db.query("UPDATE matches SET status = 'done' WHERE status = 'live'").run();
+    store.goLive(semi2.id, "gooners");
+    expect(store.getLiveMatch(id)).toMatchObject({ label: "Semifinal 2", p1_team: "gooners" });
   });
 
   it("has no live match before start", () => {
