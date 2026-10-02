@@ -87,6 +87,11 @@ describe("announceLiveMatch", () => {
     }
   });
 
+  it("refuses a match without teams", async () => {
+    await expect(announceLiveMatch({ ...match, p1_team: null })).rejects.toThrow("Match 1 went live without teams");
+    expect(channel.send).not.toHaveBeenCalled();
+  });
+
   it("refuses a match without both players", async () => {
     await expect(announceLiveMatch({ ...match, p2_id: null })).rejects.toThrow("Match 1 went live without both players");
     expect(channel.send).not.toHaveBeenCalled();
