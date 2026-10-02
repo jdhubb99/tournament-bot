@@ -37,7 +37,7 @@ it("shows two lines per tournament: what and when, then how the final went", asy
   play(id, [[2, 1], [0, 3], [1, 2], [4, 0], [3, 1]]); // A and D reach the final; A wins it 2–1
   const unix = finishAt(id, "2026-10-02 22:30:00");
   expect((await run()).description).toBe(
-    `**#${id}** · <t:${unix}:f> · Knockout, 4 players, semis Bo1\n` +
+    `<t:${unix}:f> · Knockout, 4 players, semis Bo1\n` +
       "> 🏆 **A** (1st title) beat D 2–1 in the final (Bo3)",
   );
 });
@@ -53,8 +53,8 @@ it("shows goals for a best-of-1 final and counts titles over time, newest first"
 
   expect((await run()).description).toBe(
     [
-      `**#${second}** · <t:${secondUnix}:f> · Knockout, 4 players, semis Bo3\n> 🏆 **A** (2nd title) beat C 6–2 in the final (Bo1)`,
-      `**#${first}** · <t:${firstUnix}:f> · Knockout, 4 players, semis Bo1\n> 🏆 **A** (1st title) beat C 5–4 in the final (Bo1)`,
+      `<t:${secondUnix}:f> · Knockout, 4 players, semis Bo3\n> 🏆 **A** (2nd title) beat C 6–2 in the final (Bo1)`,
+      `<t:${firstUnix}:f> · Knockout, 4 players, semis Bo1\n> 🏆 **A** (1st title) beat C 5–4 in the final (Bo1)`,
     ].join("\n\n"),
   );
 });
@@ -65,6 +65,6 @@ it("leaves out semis for round robin, which has none", async () => {
   db.query("UPDATE tournaments SET format = 'round_robin' WHERE id = $id").run({ id });
   const unix = finishAt(id, "2026-10-02 22:30:00");
   expect((await run()).description).toBe(
-    `**#${id}** · <t:${unix}:f> · Round robin + final, 4 players\n> 🏆 **C** (1st title) beat A 1–0 in the final (Bo1)`,
+    `<t:${unix}:f> · Round robin + final, 4 players\n> 🏆 **C** (1st title) beat A 1–0 in the final (Bo1)`,
   );
 });

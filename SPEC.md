@@ -239,7 +239,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 | `/report winner winner_score loser_score` | Record a game in the live match |
 | `/undo` | Remove the last reported game |
 | `/bracket` | Bracket image (live match, queue, results, champion) plus the live match as text. Shows the last finished tournament when none is running (round robin and groups: a standings image instead) |
-| `/history` | Past tournaments, newest first, two lines each: "**#4** · date and time · Knockout, 4 players, semis Bo1" then "🏆 **Jegson** (2nd title) beat Jako 2–1 in the final (Bo3)". A best-of-1 final shows goals, longer finals show games won |
+| `/history` | Past tournaments, newest first, two lines each: "date and time · Knockout, 4 players, semis Bo1" (no tournament number, since cancelled tournaments would leave gaps) then "🏆 **Jegson** (2nd title) beat Jako 2–1 in the final (Bo3)". A best-of-1 final shows goals, longer finals show games won |
 | `/leaderboard` | Titles, series record, game record, goal differential |
 | `/stats @player` | Personal stats and head-to-head records |
 | `/pick count options` | Random picker |
