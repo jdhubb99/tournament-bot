@@ -136,7 +136,7 @@ Match status: `pending` → `live` → `done`.
   - the winner is one of the two live players
   - both scores are non-negative integers and `winner_score > loser_score` (no ties)
 - Each report is one **game**. After saving it, the bot counts series wins:
-  - Series not decided: post "Jake leads 2-1".
+  - Series not decided: post "Jake leads the series 2–1" (or "Series tied 1–1"). Always say "series" so it isn't confused with a game's goals. A best of 1 skips this line, because its only game decides it.
   - Series decided: close the match, advance the winner (single elim), post the series result, announce the next match.
   - Final match decided: crown the champion and post a summary.
 - Every game stores `reported_by`, and every report is posted publicly in the channel so bad entries get spotted.
@@ -250,7 +250,8 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 ## Visuals
 
 **Embeds (built in from phase 2):**
-- Live match embed: red side stripe ("on air"), with a "versus" image showing both players' avatars side by side, each ringed and labelled in its team's color, and "VS" split between the two team colors (SVG to PNG with `@resvg/resvg-js`, using the bundled Bebas Neue font in `assets/fonts/`; an avatar that fails to download becomes a grey circle) and the series score. Once the series is decided it turns green and shows only the winner's avatar
+- Live match embed: red side stripe ("on air"), the format ("Best of 3 (first to 2)"), and a "versus" image showing both players' avatars side by side, each ringed and labelled in its team's color, with "VS" split between the two team colors (SVG to PNG with `@resvg/resvg-js`, using the bundled Bebas Neue font in `assets/fonts/`; an avatar that fails to download becomes a grey circle)
+- Match result embed (when a series is decided): green, with only the winner's avatar. A best of 1 shows a "Final score" field with the goals. Longer series show "Series (best of N)" with games won, plus a "Games" list of each game's goals. Never label games won as "Score"
 - Standings embed for round robin
 - Champion embed
 
