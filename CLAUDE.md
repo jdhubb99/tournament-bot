@@ -36,7 +36,7 @@ The user often runs `bun --watch src/index.ts` while we work, and that process h
 - **Coverage must be 100% before a PR is opened.** `bunfig.toml` sets a 100% line and function threshold, so `bun test --coverage` exits non-zero if coverage drops below that.
 - **Bun only reports files that some test imports.** A source file no test loads simply doesn't appear in the table, and the total can still read 100%. Check that every file under `src/` is listed, and add a test that imports any file that's missing.
 - **Entry points are the only exclusion.** `src/index.ts` and `src/deploy-commands.ts` are excluded from coverage in `bunfig.toml`, because they log in to Discord when loaded. Keep each to a one-line call into a tested module (`bot.ts`, `deploy.ts`), and put any new logic in those modules.
-- `src/test/setup.ts` is preloaded for every test run. It sets `DB_PATH=":memory:"` and fake `.env` values, so tests never use the real token or `data/`. The tests share one in-memory DB, so call `resetDb()` in `beforeEach`.
+- `src/test/setup.ts` is preloaded for every test run. It sets `DB_PATH=":memory:"` and fake `.env` values, so tests never use the real token or `data/`. The tests share one in-memory DB, so call `resetDb()` in `beforeEach`. The setup file also replaces `fetch` with a stub that throws, so tests never reach the network. Tests that need `fetch` mock it with `spyOn(globalThis, "fetch")`.
 - Test Discord-facing code with the fakes in `src/test/helpers.ts` (`fakeInteraction`, `fakeChannel`, `cast`, `arg`) and assert on what gets replied, sent, or stored. Set the channel with `useTournamentChannel(fakeChannel())`. Every function counts toward coverage, including `.catch(() => ...)` callbacks and default mock implementations in the helpers, so test those failure paths too.
 
 ## Git workflow
@@ -60,7 +60,7 @@ Once a piece of work (for example a phase) is finished, commit it and open a PR:
 
 ## Architecture rules
 
-- Layers: `src/logic/` (pure rules), `src/store.ts` (all SQL), `src/render/` (embeds/images), `src/announce.ts` (posts to the channel), `src/commands/` (Discord handlers that tie these together), `src/bot.ts` (client setup and interaction routing), `src/channel.ts` (startup check and the shared `#tournaments` channel).
+- Layers: `src/logic/` (pure rules), `src/store.ts` (all SQL), `src/render/` (embeds/images; images are SVG rendered to PNG with resvg and the bundled font in `assets/fonts/`), `src/announce.ts` (posts to the channel), `src/commands/` (Discord handlers that tie these together), `src/bot.ts` (client setup and interaction routing), `src/channel.ts` (startup check and the shared `#tournaments` channel).
 - **`src/logic/` is pure.** It never imports discord.js or `db.ts`. Bracket, round-robin, series, stats, and random logic take plain data and return plain data, so `bun test` runs without a bot. Commands in `src/commands/` load from the DB, call logic, write the results, and render with `src/render/`.
 - Tests sit next to the code they test as `*.test.ts`.
 - **Matches form an ordered queue, not parallel rounds.** Each match has a `play_order`. At most one match per tournament is `live`. A match goes live only after the previous series is decided and both of its players are known. Status runs `pending` → `live` → `done`.

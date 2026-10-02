@@ -31,7 +31,7 @@ Runtime is **Bun**, used for everything it covers (runtime, package manager, tes
 | discord.js | 14.x (latest) | Works on Bun out of the box. v15 is still pre-release, so don't use it until it's stable |
 | bun:sqlite | built in | Replaces better-sqlite3 (similar synchronous API, faster). Single file at `data/bot.db` |
 | bun test | built in | Replaces vitest. Jest-style API (`describe`, `it`, `expect`) |
-| @resvg/resvg-js | latest | Visuals phase only. Native module, so confirm it loads under Bun at the start of that phase |
+| @resvg/resvg-js | latest | Renders the match versus image (from phase 2) and bracket images (phase 8). Native module, confirmed to load under Bun |
 
 - Config: Bun loads `.env` automatically (`DISCORD_TOKEN`, `CLIENT_ID`, `GUILD_ID`, `TOURNAMENT_CHANNEL_ID`), no dotenv or flags needed
 - Scripts: `bun --watch src/index.ts` (dev), `bun src/index.ts` (prod), `bun test`, `bunx tsc --noEmit` (type check)
@@ -241,14 +241,14 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 ## Visuals
 
 **Embeds (built in from phase 2):**
-- Live match embed: both avatars, series score, yellow while live, green when finished
+- Live match embed: yellow, with a "versus" image showing both players' avatars side by side (SVG to PNG with `@resvg/resvg-js`, using the bundled Bebas Neue font in `assets/fonts/`; an avatar that fails to download becomes a grey circle) and the series score. Once the series is decided it turns green and shows only the winner's avatar
 - Standings embed for round robin
 - Champion embed
 
 **Bracket image (phase 8):**
 - Render the bracket as SVG, convert to PNG with `@resvg/resvg-js`
 - Fetch player avatars and embed them as data URIs
-- Load a bundled font file explicitly (resvg won't pick up system fonts reliably)
+- Load the bundled font file explicitly (resvg won't pick up system fonts reliably). `assets/fonts/BebasNeue-Regular.ttf` is already used by the versus image
 - Round robin gets a standings table image, with the top-2 final matchup shown once the league is done
 - Groups format gets two small standings tables plus the semis/final bracket
 - 8-player bracket layout (quarters → semis → final)
@@ -313,7 +313,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 
 ### Phase 8 — Visuals
 - [ ] SVG bracket layout for single elim
-- [ ] PNG conversion, avatars, bundled font
+- [ ] PNG conversion, avatars, bundled font (the versus image in `render/versus-image.ts` already does all three for one match)
 - [ ] Standings image for round robin
 - [ ] Edit-in-place bracket message after each match
 
