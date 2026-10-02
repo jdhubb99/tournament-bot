@@ -2,9 +2,9 @@ import { AttachmentBuilder, type EmbedBuilder } from "discord.js";
 import { tournamentChannel } from "./channel.ts";
 import { env } from "./env.ts";
 import { seriesState } from "./logic/series.ts";
-import { otherTeam } from "./logic/teams.ts";
+import { otherTeam, type Team } from "./logic/teams.ts";
 import { championEmbed, liveMatchEmbed, matchResultEmbed, resultLine, type EmbedPlayer } from "./render/embeds.ts";
-import { renderVersusImage, VERSUS_FILE } from "./render/versus-image.ts";
+import { renderVersusImage, renderWinnerImage, VERSUS_FILE, WINNER_FILE } from "./render/match-images.ts";
 import { getPlayer, listGames, listMatches, type Match } from "./store.ts";
 
 // Static PNGs so animated avatars and webp still render in the versus image.
@@ -48,17 +48,31 @@ export async function announceLiveMatch(match: Match): Promise<void> {
   });
 }
 
-/** The green result embed for a decided match, showing only the winner's avatar. */
-export async function matchResult(match: Match): Promise<EmbedBuilder> {
+/** The team a player was on in a match. */
+function teamIn(match: Match, playerId: string): Team {
+  if (!match.p1_team) throw new Error(`Match ${match.id} has no teams`);
+  return match.p1_id === playerId ? match.p1_team : otherTeam(match.p1_team);
+}
+
+/** The winner image as an upload, ringed in the team they won with. */
+async function winnerImage(winner: EmbedPlayer, team: Team): Promise<AttachmentBuilder> {
+  const png = renderWinnerImage({ avatar: await fetchAvatar(winner.avatarUrl), team });
+  return new AttachmentBuilder(Buffer.from(png), { name: WINNER_FILE });
+}
+
+/** The green result embed for a decided match, plus the winner image it shows. */
+export async function matchResult(match: Match): Promise<{ embed: EmbedBuilder; file: AttachmentBuilder }> {
   const [p1, p2] = await Promise.all([embedPlayer(match.p1_id!), embedPlayer(match.p2_id!)]);
-  return matchResultEmbed({
+  const winner = match.winner_id === p1.id ? p1 : p2;
+  const embed = matchResultEmbed({
     label: match.label,
     bestOf: match.best_of,
     p1,
     p2,
     games: listGames(match.id),
-    winnerId: match.winner_id!,
+    winnerId: winner.id,
   });
+  return { embed, file: await winnerImage(winner, teamIn(match, winner.id)) };
 }
 
 /** Crowns the champion with a summary of every match, pinging only the champion (nobody in dev mode). */
@@ -89,6 +103,7 @@ export async function announceChampion(tournamentId: number, championId: string)
   await tournamentChannel().send({
     content: `🏆 <@${championId}> wins the tournament!`,
     embeds: [championEmbed({ champion, runnerUpName: name(runnerUp), results })],
+    files: [await winnerImage(champion, teamIn(final, championId))],
     allowedMentions: { users: env.devCommands ? [] : [championId] },
   });
 }

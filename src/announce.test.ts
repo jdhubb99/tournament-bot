@@ -105,14 +105,24 @@ describe("results", () => {
     useTournamentChannel(cast(channel));
   });
 
-  it("builds the green result embed for a decided match", async () => {
-    const id = startedTournament();
+  it("builds the green result embed with the winner image attached", async () => {
+    const id = startedTournament(); // a is p1 on Goons, so b is on Gooners
     const outcome = recordGame(getLiveMatch(id)!, 1, 3, "r", "goons");
-    const embed = (await matchResult(outcome.match)).toJSON();
+    const { embed, file } = await matchResult(outcome.match);
+    const json = embed.toJSON();
     // Alice is a server member; b falls back to the user profile.
-    expect(embed.title).toBe("Semifinal 1 — user-b wins");
-    expect(embed.thumbnail?.url).toBe("https://cdn.test/user/b.png");
-    expect(embed.fields).toEqual([{ name: "Final score", value: "Alice 1 – 3 **user-b**" }]);
+    expect(json.title).toBe("Semifinal 1 — user-b wins");
+    expect(json.thumbnail?.url).toBe("attachment://winner.png");
+    expect(json.fields).toEqual([{ name: "Final score", value: "Alice 1 – 3 **user-b**" }]);
+    expect(file.name).toBe("winner.png");
+    expect([...(file.attachment as Buffer).subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+    expect(fetchSpy.mock.calls.map((c) => c[0])).toEqual(["https://cdn.test/user/b.png"]);
+  });
+
+  it("refuses to draw a winner for a match without teams", async () => {
+    const id = startedTournament();
+    const outcome = recordGame(getLiveMatch(id)!, 3, 1, "r", "goons");
+    await expect(matchResult({ ...outcome.match, p1_team: null })).rejects.toThrow(`Match ${outcome.match.id} has no teams`);
   });
 
   it("crowns the champion with every result, goals for Bo1 and games for longer series", async () => {
@@ -127,6 +137,7 @@ describe("results", () => {
     const message = arg(channel.send);
     expect(message.content).toBe("🏆 <@a> wins the tournament!");
     expect(message.allowedMentions).toEqual({ users: ["a"] });
+    expect(message.files.map((f: { name: string }) => f.name)).toEqual(["winner.png"]);
     const embed = message.embeds[0].toJSON();
     expect(embed.title).toBe("🏆 Alice is the champion!");
     expect(embed.fields).toEqual([

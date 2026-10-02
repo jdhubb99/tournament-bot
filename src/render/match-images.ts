@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { TEAMS, type Team } from "../logic/teams.ts";
 
 export const VERSUS_FILE = "versus.png";
+export const WINNER_FILE = "winner.png";
 
 // resvg doesn't pick up system fonts reliably, so the font ships with the repo.
 const FONT_FILE = join(import.meta.dir, "..", "..", "assets", "fonts", "BebasNeue-Regular.ttf");
@@ -17,8 +18,9 @@ export interface VersusSide {
   team: Team;
 }
 
-function side({ avatar, team }: VersusSide, cx: number, id: string): string {
-  const { name, color } = TEAMS[team];
+/** An avatar ringed in its team's color with a label underneath (the team name by default). */
+function side({ avatar, team }: VersusSide, cx: number, id: string, label = TEAMS[team].name): string {
+  const { color } = TEAMS[team];
   const picture = avatar
     ? `<image href="data:image/png;base64,${Buffer.from(avatar).toString("base64")}" x="${cx - RADIUS}" y="${AVATAR_Y - RADIUS}" width="${RADIUS * 2}" height="${RADIUS * 2}" clip-path="url(#${id})"/>`
     : `<circle cx="${cx}" cy="${AVATAR_Y}" r="${RADIUS}" fill="#4e5058"/>`;
@@ -26,7 +28,7 @@ function side({ avatar, team }: VersusSide, cx: number, id: string): string {
     <clipPath id="${id}"><circle cx="${cx}" cy="${AVATAR_Y}" r="${RADIUS}"/></clipPath>
     ${picture}
     <circle cx="${cx}" cy="${AVATAR_Y}" r="${RADIUS}" fill="none" stroke="${color}" stroke-width="8"/>
-    <text x="${cx}" y="${AVATAR_Y + RADIUS + 50}" font-family="Bebas Neue" font-size="44" fill="${color}" text-anchor="middle">${name}</text>`;
+    <text x="${cx}" y="${AVATAR_Y + RADIUS + 50}" font-family="Bebas Neue" font-size="44" fill="${color}" text-anchor="middle">${label}</text>`;
 }
 
 /**
@@ -45,6 +47,22 @@ export function renderVersusImage(p1: VersusSide, p2: VersusSide): Uint8Array {
     ${side(p2, WIDTH - 130, "p2")}
     <text x="${WIDTH / 2}" y="${AVATAR_Y + 34}" font-family="Bebas Neue" font-size="96" fill="url(#vs)" text-anchor="middle">VS</text>
   </svg>`;
+  return toPng(svg);
+}
+
+/**
+ * The winner's avatar ringed in their team's color with "WINNER" underneath. Uploaded as a
+ * file because Discord doesn't reliably show avatar links as embed thumbnails.
+ */
+export function renderWinnerImage(winner: VersusSide): Uint8Array {
+  const width = 260;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${HEIGHT}" viewBox="0 0 ${width} ${HEIGHT}">
+    ${side(winner, width / 2, "w", "Winner")}
+  </svg>`;
+  return toPng(svg);
+}
+
+function toPng(svg: string): Uint8Array {
   const resvg = new Resvg(svg, { font: { fontFiles: [FONT_FILE], loadSystemFonts: false, defaultFontFamily: "Bebas Neue" } });
   return resvg.render().asPng();
 }

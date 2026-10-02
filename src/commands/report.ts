@@ -60,8 +60,13 @@ export const report: Command = {
     if (match.best_of > 1) lines.push(describeSeries(outcome.series, p1Name, p2Name));
     const content = lines.join("\n");
 
-    const embeds = outcome.series.winner ? [await matchResult(outcome.match)] : [];
-    await interaction.editReply({ content, embeds, allowedMentions: { parse: [] } });
+    const result = outcome.series.winner ? await matchResult(outcome.match) : null;
+    await interaction.editReply({
+      content,
+      embeds: result ? [result.embed] : [],
+      files: result ? [result.file] : [],
+      allowedMentions: { parse: [] },
+    });
 
     if (outcome.next) await announceLiveMatch(outcome.next);
     if (outcome.championId) await announceChampion(match.tournament_id, outcome.championId);

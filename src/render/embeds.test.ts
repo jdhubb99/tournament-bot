@@ -54,7 +54,7 @@ describe("matchResultEmbed", () => {
     }).toJSON();
     expect(embed.color).toBe(0x2ecc71);
     expect(embed.title).toBe("Semifinal 1 — Alice wins");
-    expect(embed.thumbnail?.url).toBe("https://cdn.test/a.png");
+    expect(embed.thumbnail?.url).toBe("attachment://winner.png");
     expect(embed.image).toBeUndefined();
     expect(embed.fields).toEqual([{ name: "Final score", value: "**Alice** 6 – 5 Bob" }]);
   });
@@ -72,7 +72,7 @@ describe("matchResultEmbed", () => {
       winnerId: "b",
     }).toJSON();
     expect(embed.title).toBe("Final — Bob wins");
-    expect(embed.thumbnail?.url).toBe("https://cdn.test/b.png");
+    expect(embed.thumbnail?.url).toBe("attachment://winner.png");
     expect(embed.fields).toEqual([
       { name: "Series (best of 3)", value: "Alice 1 – 2 **Bob**" },
       { name: "Games", value: "Game 1: Alice 6–5\nGame 2: Bob 3–2\nGame 3: Bob 4–0" },
@@ -105,7 +105,7 @@ describe("championEmbed", () => {
     }).toJSON();
     expect(embed.color).toBe(0xd4af37);
     expect(embed.title).toBe("🏆 Jake is the champion!");
-    expect(embed.thumbnail?.url).toBe("https://cdn.test/j.png");
+    expect(embed.thumbnail?.url).toBe("attachment://winner.png");
     expect(embed.fields).toEqual([
       { name: "Runner-up", value: "Benny" },
       { name: "Results", value: "Semifinal 1: **Jake** def. A (3–1)\nFinal: **Jake** def. Benny (2–1)" },

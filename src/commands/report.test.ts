@@ -67,6 +67,7 @@ describe("/report results", () => {
     const message = arg(interaction.editReply);
     expect(message.content).toBe("Game 1 · Semifinal 1: A 2 – 4 **B**\nB leads the series 1–0");
     expect(message.embeds).toEqual([]);
+    expect(message.files).toEqual([]);
     expect(message.allowedMentions).toEqual({ parse: [] });
     expect(listGames(getLiveMatch(id)!.id)[0]).toMatchObject({ p1_score: 2, p2_score: 4, reported_by: "ref" });
     expect(channel.send).not.toHaveBeenCalled();
@@ -81,6 +82,8 @@ describe("/report results", () => {
     const embed = message.embeds[0].toJSON();
     expect(embed.title).toBe("Semifinal 1 — user-a wins");
     expect(embed.fields).toEqual([{ name: "Final score", value: "**user-a** 3 – 0 user-b" }]);
+    expect(embed.thumbnail.url).toBe("attachment://winner.png");
+    expect(message.files.map((f: { name: string }) => f.name)).toEqual(["winner.png"]);
     expect(arg(channel.send).content).toBe("Up next: <@c> vs <@d> (Bo1)");
   });
 
