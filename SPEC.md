@@ -119,6 +119,14 @@ Match status: `pending` → `live` → `done`.
 - Top 2 from each group advance. Semi 1 = A1 vs B2, Semi 2 = B1 vs A2. Winners play the final.
 - Semi and final rows are created at start with empty players. Semis fill in once the last group match closes.
 
+### Teams
+
+- There are two teams: **Goons** (green, `#2ecc71`) and **Gooners** (purple, `#9b59b6`).
+- Every match puts each side on one of the teams. When a match goes live, a coin flip picks p1's team and p2 gets the other.
+- A side keeps its team for every game of that series. In the next match the coin is flipped again, so a player's team can change between matches.
+- In 1v1 each side is one player. Future team formats (e.g. 2v2) use the same two teams, with every player on a side sharing that side's team.
+- Teams are shown in the versus image: each avatar is ringed and labelled in its team's color.
+
 ### Reporting scores
 
 `/report winner:@user winner_score:N loser_score:N`
@@ -200,7 +208,8 @@ CREATE TABLE matches (
   winner_id     TEXT REFERENCES players(discord_id),
   next_match_id INTEGER REFERENCES matches(id),
   next_slot     TEXT CHECK (next_slot IN ('p1','p2')),
-  status        TEXT NOT NULL CHECK (status IN ('pending','live','done'))
+  status        TEXT NOT NULL CHECK (status IN ('pending','live','done')),
+  p1_team       TEXT CHECK (p1_team IN ('goons','gooners'))  -- set when the match goes live; p2 is on the other team
 );
 
 CREATE TABLE games (
@@ -241,7 +250,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 ## Visuals
 
 **Embeds (built in from phase 2):**
-- Live match embed: yellow, with a "versus" image showing both players' avatars side by side (SVG to PNG with `@resvg/resvg-js`, using the bundled Bebas Neue font in `assets/fonts/`; an avatar that fails to download becomes a grey circle) and the series score. Once the series is decided it turns green and shows only the winner's avatar
+- Live match embed: yellow, with a "versus" image showing both players' avatars side by side, each ringed and labelled in its team's color (SVG to PNG with `@resvg/resvg-js`, using the bundled Bebas Neue font in `assets/fonts/`; an avatar that fails to download becomes a grey circle) and the series score. Once the series is decided it turns green and shows only the winner's avatar
 - Standings embed for round robin
 - Champion embed
 
