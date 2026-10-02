@@ -240,3 +240,94 @@ export const recordGame = db.transaction(
 export function getMatch(id: number): Match | null {
   return db.query<Match, { id: number }>("SELECT * FROM matches WHERE id = $id").get({ id });
 }
+
+/**
+ * The tournament /undo applies to: the guild's newest tournament, if it's active or
+ * finished. Undoing a finished tournament's last game reopens it.
+ */
+export function getUndoableTournament(guildId: string): Tournament | null {
+  const latest = db
+    .query<Tournament, { g: string }>("SELECT * FROM tournaments WHERE guild_id = $g ORDER BY id DESC LIMIT 1")
+    .get({ g: guildId });
+  return latest && (latest.status === "active" || latest.status === "done") ? latest : null;
+}
+
+export function getLastGame(tournamentId: number): Game | null {
+  return db
+    .query<Game, { t: number }>(
+      `SELECT g.* FROM games g JOIN matches m ON m.id = g.match_id
+       WHERE m.tournament_id = $t ORDER BY g.id DESC LIMIT 1`,
+    )
+    .get({ t: tournamentId });
+}
+
+export interface UndoOutcome {
+  game: Game;
+  /** The undone game's match, re-read after the undo (always live again). */
+  match: Match;
+  series: SeriesState;
+  /** True if the undone game had decided its series, so the match was reopened. */
+  reopened: boolean;
+  /** The match that had gone live after it and is now back to waiting, if any. */
+  paused: Match | null;
+  /** True if the undone game had ended the tournament. */
+  tournamentReopened: boolean;
+}
+
+/**
+ * Removes the tournament's most recent game and reverses everything it caused: reopens
+ * the match it closed, takes the winner back out of the next match, puts any match that
+ * went live afterwards back to waiting (it has no games, since this game was the latest),
+ * and reopens the tournament if this game had ended it. Returns null if there's no game.
+ */
+export const undoLastGame = db.transaction((tournamentId: number): UndoOutcome | null => {
+  const game = getLastGame(tournamentId);
+  if (!game) return null;
+  const match = getMatch(game.match_id)!;
+
+  let paused: Match | null = null;
+  let tournamentReopened = false;
+  const reopened = match.status === "done";
+  if (reopened) {
+    const live = getLiveMatch(tournamentId);
+    if (live) {
+      db.query("UPDATE matches SET status = 'pending', p1_team = NULL WHERE id = $id").run({ id: live.id });
+      paused = getMatch(live.id);
+    }
+    if (match.next_match_id) {
+      const column = match.next_slot === "p1" ? "p1_id" : "p2_id";
+      db.query(`UPDATE matches SET ${column} = NULL WHERE id = $id`).run({ id: match.next_match_id });
+    }
+    // TODO(phases 5–6): clear playoff players filled from league or group standings.
+    db.query("UPDATE matches SET status = 'live', winner_id = NULL WHERE id = $id").run({ id: match.id });
+
+    const tournament = getTournament(tournamentId)!;
+    if (tournament.status === "done") {
+      db.query("UPDATE tournaments SET status = 'active', winner_id = NULL, finished_at = NULL WHERE id = $id").run({
+        id: tournamentId,
+      });
+      tournamentReopened = true;
+    }
+  }
+
+  db.query("DELETE FROM games WHERE id = $id").run({ id: game.id });
+  const after = getMatch(match.id)!;
+  return {
+    game,
+    match: after,
+    series: seriesState(listGames(match.id), match.best_of),
+    reopened,
+    paused,
+    tournamentReopened,
+  };
+});
+
+/** Finished tournaments for /history, newest first. */
+export function listFinishedTournaments(guildId: string, limit = 10): (Tournament & { finished_at: string })[] {
+  return db
+    .query<Tournament & { finished_at: string }, { g: string; limit: number }>(
+      `SELECT * FROM tournaments WHERE guild_id = $g AND status = 'done'
+       ORDER BY finished_at DESC, id DESC LIMIT $limit`,
+    )
+    .all({ g: guildId, limit });
+}
