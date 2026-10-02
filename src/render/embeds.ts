@@ -1,5 +1,6 @@
 import { EmbedBuilder } from "discord.js";
-import { VERSUS_FILE } from "./versus-image.ts";
+import { seriesState, winsNeeded, type GameScore } from "../logic/series.ts";
+import { SCOREBOARD_FILE, VERSUS_FILE, WINNER_FILE } from "./match-images.ts";
 
 const LIVE_RED = 0xed4245;
 const GREEN = 0x2ecc71;
@@ -31,29 +32,89 @@ export function signupEmbed(opts: {
     );
 }
 
+/** A live match: red stripe, the format, and both avatars in the attached versus image. */
+export function liveMatchEmbed(opts: { label: string; bestOf: number; p1: EmbedPlayer; p2: EmbedPlayer }): EmbedBuilder {
+  const format = opts.bestOf === 1 ? "Best of 1" : `Best of ${opts.bestOf} (first to ${winsNeeded(opts.bestOf)})`;
+  return new EmbedBuilder()
+    .setColor(LIVE_RED)
+    .setTitle(`${opts.label} — Live`)
+    .setDescription(`<@${opts.p1.id}> vs <@${opts.p2.id}>`)
+    .addFields({ name: "Format", value: format })
+    .setImage(`attachment://${VERSUS_FILE}`);
+}
+
+/** A series still in progress after a game: red stripe, the standing, and the attached scoreboard image. */
+export function seriesUpdateEmbed(opts: { label: string; gameNumber: number; standing: string }): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(LIVE_RED)
+    .setTitle(`${opts.label} — Game ${opts.gameNumber}`)
+    .setDescription(opts.standing)
+    .setImage(`attachment://${SCOREBOARD_FILE}`);
+}
+
 /**
- * Live: red ("on air"), with both avatars in the attached versus image (see versus-image.ts).
- * Decided: green, showing only the winner's avatar.
+ * A decided match: green stripe with only the winner's picture (the attached winner image). Best of 1 shows the
+ * goals as the final score; longer series show games won plus each game's goals.
  */
-export function matchEmbed(opts: {
+export function matchResultEmbed(opts: {
   label: string;
   bestOf: number;
   p1: EmbedPlayer;
   p2: EmbedPlayer;
-  p1Wins: number;
-  p2Wins: number;
-  winnerId?: string | null;
+  games: GameScore[];
+  winnerId: string;
 }): EmbedBuilder {
   const { p1, p2 } = opts;
-  const winner = [p1, p2].find((p) => p.id === opts.winnerId);
+  const winner = p1.id === opts.winnerId ? p1 : p2;
+  const name = (p: EmbedPlayer) => (p === winner ? `**${p.name}**` : p.name);
   const embed = new EmbedBuilder()
+    .setColor(GREEN)
+    .setTitle(`${opts.label} — ${winner.name} wins`)
     .setDescription(`<@${p1.id}> vs <@${p2.id}>`)
-    .addFields(
-      { name: "Series", value: `Best of ${opts.bestOf}`, inline: true },
-      { name: "Score", value: `${p1.name} **${opts.p1Wins} – ${opts.p2Wins}** ${p2.name}`, inline: true },
-    );
-  if (winner) {
-    return embed.setColor(GREEN).setTitle(`${opts.label} — ${winner.name} wins`).setThumbnail(winner.avatarUrl);
+    .setThumbnail(`attachment://${WINNER_FILE}`);
+
+  if (opts.bestOf === 1) {
+    const game = opts.games[0]!;
+    return embed.addFields({ name: "Final score", value: `${name(p1)} ${game.p1_score} – ${game.p2_score} ${name(p2)}` });
   }
-  return embed.setColor(LIVE_RED).setTitle(`${opts.label} — Live`).setImage(`attachment://${VERSUS_FILE}`);
+
+  const series = seriesState(opts.games, opts.bestOf);
+  const games = opts.games.map((g, i) => {
+    const [gameWinner, high, low] = g.p1_score > g.p2_score ? [p1, g.p1_score, g.p2_score] : [p2, g.p2_score, g.p1_score];
+    return `Game ${i + 1}: ${gameWinner.name} ${high}–${low}`;
+  });
+  return embed.addFields(
+    { name: `Series (best of ${opts.bestOf})`, value: `${name(p1)} ${series.p1Wins} – ${series.p2Wins} ${name(p2)}` },
+    { name: "Games", value: games.join("\n") },
+  );
+}
+
+const GOLD = 0xd4af37;
+
+/**
+ * "Semifinal 1: **Jake** def. Benny (6–5)" for goals in a best of 1, or
+ * "Final: **Jake** def. Benny (series 2–1)" for games won in a longer series.
+ */
+export function resultLine(opts: {
+  label: string;
+  winnerName: string;
+  loserName: string;
+  winnerScore: number;
+  loserScore: number;
+  series: boolean;
+}): string {
+  const score = `${opts.series ? "series " : ""}${opts.winnerScore}–${opts.loserScore}`;
+  return `${opts.label}: **${opts.winnerName}** def. ${opts.loserName} (${score})`;
+}
+
+/** Gold, with the champion's picture (the attached winner image), the runner-up, and every result. */
+export function championEmbed(opts: { champion: EmbedPlayer; runnerUpName: string; results: string[] }): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(GOLD)
+    .setTitle(`🏆 ${opts.champion.name} is the champion!`)
+    .setThumbnail(`attachment://${WINNER_FILE}`)
+    .addFields(
+      { name: "Runner-up", value: opts.runnerUpName },
+      { name: "Results", value: opts.results.join("\n") },
+    );
 }

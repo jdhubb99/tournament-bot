@@ -70,7 +70,7 @@ export function joinSignup(tournamentId: number, playerId: string, displayName: 
   return "joined";
 }
 
-export const FULL_MESSAGE = `The bot supports up to ${MAX_PLAYERS} players, and this tournament is full.`;
+const FULL_MESSAGE = `The bot supports up to ${MAX_PLAYERS} players, and this tournament is full.`;
 
 async function join(interaction: ButtonInteraction<"cached">, tournament: Tournament) {
   switch (joinSignup(tournament.id, interaction.user.id, interaction.member.displayName)) {

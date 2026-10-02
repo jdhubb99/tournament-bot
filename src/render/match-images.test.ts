@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Resvg } from "@resvg/resvg-js";
-import { renderVersusImage } from "./versus-image.ts";
+import { renderScoreboardImage, renderVersusImage, renderWinnerImage } from "./match-images.ts";
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
@@ -35,5 +35,36 @@ describe("renderVersusImage", () => {
     const a = renderVersusImage({ avatar: null, team: "goons" }, { avatar: null, team: "gooners" });
     const b = renderVersusImage({ avatar: null, team: "gooners" }, { avatar: null, team: "goons" });
     expect(same(a, b)).toBe(false);
+  });
+});
+
+describe("renderWinnerImage", () => {
+  it("renders a 260x290 PNG", () => {
+    const png = renderWinnerImage({ avatar: solidPng("red"), team: "gooners" });
+    expect([...png.slice(0, 8)]).toEqual(PNG_SIGNATURE);
+    expect(size(png)).toEqual({ width: 260, height: 290 });
+  });
+
+  it("depends on the avatar and the team", () => {
+    const placeholder = renderWinnerImage({ avatar: null, team: "goons" });
+    expect(same(placeholder, renderWinnerImage({ avatar: solidPng("red"), team: "goons" }))).toBe(false);
+    expect(same(placeholder, renderWinnerImage({ avatar: null, team: "gooners" }))).toBe(false);
+  });
+});
+
+describe("renderScoreboardImage", () => {
+  const sides = [
+    { avatar: solidPng("red"), team: "goons" as const },
+    { avatar: null, team: "gooners" as const },
+  ] as const;
+
+  it("renders the versus layout at 600x290", () => {
+    expect(size(renderScoreboardImage(sides[0], sides[1], 1, 0))).toEqual({ width: 600, height: 290 });
+  });
+
+  it("draws the score instead of VS, so different scores give different images", () => {
+    const oneNil = renderScoreboardImage(sides[0], sides[1], 1, 0);
+    expect(same(oneNil, renderScoreboardImage(sides[0], sides[1], 1, 1))).toBe(false);
+    expect(same(oneNil, renderVersusImage(sides[0], sides[1]))).toBe(false);
   });
 });

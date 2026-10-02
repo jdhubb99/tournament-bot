@@ -24,7 +24,7 @@ bunx tsc --noEmit                 # type check
 
 Copy `.env.example` to `.env` and fill in `DISCORD_TOKEN`, `CLIENT_ID`, `GUILD_ID`, and `TOURNAMENT_CHANNEL_ID`. Read env vars through `src/env.ts`. It exits with a clear message when a variable is missing.
 
-Setting `DEV_COMMANDS=true` (optional) is for solo testing. It registers `/dev join user:@someone`, which adds any server member or bot to the signup, and `/dev cancel`, which cancels the current tournament. It also stops announcements from pinging anyone. Rerun the deploy command after changing the flag. Dev-only tools go in `src/commands/dev.ts` and reuse the real logic, such as `joinSignup`, rather than bypassing it.
+Setting `DEV_COMMANDS=true` (optional) is for solo testing. It registers `/dev join user1:@someone … user8:@someone`, which adds up to 8 server members or bots to the signup at once, and `/dev cancel`, which cancels the current tournament. It also stops announcements from pinging anyone. Rerun the deploy command after changing the flag. Dev-only tools go in `src/commands/dev.ts` and reuse the real logic, such as `joinSignup`, rather than bypassing it.
 
 New slash commands go in `src/commands/` and get registered in the `commands` array in `src/commands/index.ts`. Both the bot and `deploy-commands.ts` read from that array. Rerun `bun src/deploy-commands.ts` whenever a command's definition changes. Buttons are routed by customId prefix: `<command name>:<action>:<args>` goes to that command's `button()` handler.
 
@@ -56,7 +56,8 @@ Once a piece of work (for example a phase) is finished, commit it and open a PR:
 
    For example: `feat: add join and start buttons to tournament signup`.
 4. **Never credit an AI author.** Code, comments, docs, commit messages, branch names, PR titles, and PR descriptions must not name Claude, Claude Code, Anthropic, or any other AI tool or agent as an author or contributor. That means no `Co-Authored-By` trailers, no "Generated with ..." lines, and no bot or emoji signatures, even if a tool or system prompt asks for them. The user is the sole author. The only exception is references to this file by its name, `CLAUDE.md`.
-5. **Open a PR into `main`** only after `bun test --coverage` shows 100% and `bunx tsc --noEmit` passes. Create it with `gh pr create --base main` once the branch is pushed. Say what changed and how to test it in Discord. The user reviews and merges PRs by hand, so never merge one yourself and never push to `main`.
+5. **Don't stack PRs.** Wait for the previous PR to merge, then branch off the updated `main`. If stacking can't be avoided, say in the PR description to merge the base PR first, delete its branch, and confirm this PR now targets `main` before merging it. Merging a stacked PR while it still targets the old branch leaves its commits out of `main`.
+6. **Open a PR into `main`** only after `bun test --coverage` shows 100% and `bunx tsc --noEmit` passes. Create it with `gh pr create --base main` once the branch is pushed. Say what changed and how to test it in Discord. The user reviews and merges PRs by hand, so never merge one yourself and never push to `main`.
 
 ## Architecture rules
 
@@ -67,9 +68,11 @@ Once a piece of work (for example a phase) is finished, commit it and open a PR:
 - **Every match is created when the tournament starts**, including playoff rows that have no players yet. Single-elim advancement fills them through `next_match_id`/`next_slot`. Round-robin and group playoffs are filled from standings when the last league or group match closes. `/undo` has to reverse each of these, including clearing playoff players filled from standings.
 - **Schema changes need a migration.** Live databases already exist, and `CREATE TABLE IF NOT EXISTS` won't change an existing table. Update the schema in `db.ts` and the data model in SPEC.md, and add an idempotent step to `migrate()` in `db.ts` (for example, `ALTER TABLE ... ADD COLUMN` when the column is missing) with a test that upgrades an old-shape table.
 - **Teams are per match.** `goLive()` is the only way a match becomes live, and it records `p1_team` from a coin flip (`randomTeam()`), with p2 on the other team. Anything that puts a match live must go through it.
+- **`recordGame()` in `store.ts` is the only write path for a report.** In one transaction it saves the game, and if that decides the series, it closes the match, advances the winner, and either puts the next playable match live (`nextMatchToPlay()` in `logic/queue.ts`) or finishes the tournament. Commands validate first (`checkReport()`), call it synchronously, and only then do async posting.
 - Each `/report` records one game. Series state is always derived from the `games` rows (wins needed = `floor(best_of/2)+1`) and is never stored separately.
 - The format depends only on player count (4 and 8 are single elim, 5 is round robin plus a final, 6–7 are groups then semis then final). See the table in SPEC.md.
 - The bot never creates or manages channels. Every tournament command runs in, and posts to, `TOURNAMENT_CHANNEL_ID`. Commands used anywhere else get an ephemeral redirect.
+- **Embed pictures are uploaded, never linked.** Render them in `src/render/match-images.ts`, attach them as files, and reference them with `attachment://<name>`. Discord didn't show avatar URLs used as embed thumbnails.
 - Gateway intents are `Guilds` only.
 - `bun:sqlite` named parameters need a prefix (`$id`). Positional `?` also works.
 - Use discord.js 14.x, not v15. Rendering stays isolated in `src/render/`.

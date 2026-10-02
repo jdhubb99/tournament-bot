@@ -2,6 +2,8 @@
 // interleaving with other interactions; multi-step writes use transactions.
 import { db } from "./db.ts";
 import type { PlannedMatch, SeriesLengths } from "./logic/bracket.ts";
+import { allMatchesDone, nextMatchToPlay } from "./logic/queue.ts";
+import { seriesState, type SeriesState } from "./logic/series.ts";
 import type { Team } from "./logic/teams.ts";
 
 export type TournamentStatus = "signup" | "active" | "done" | "cancelled";
@@ -150,4 +152,91 @@ export function cancelTournament(tournamentId: number): void {
   db.query("UPDATE tournaments SET status = 'cancelled', finished_at = datetime('now') WHERE id = $id").run({
     id: tournamentId,
   });
+}
+
+export interface Game {
+  id: number;
+  match_id: number;
+  game_number: number;
+  p1_score: number;
+  p2_score: number;
+  reported_by: string;
+}
+
+export function getPlayer(discordId: string): Player | null {
+  return db.query<Player, { id: string }>("SELECT * FROM players WHERE discord_id = $id").get({ id: discordId });
+}
+
+/** All matches in play order. */
+export function listMatches(tournamentId: number): Match[] {
+  return db
+    .query<Match, { t: number }>("SELECT * FROM matches WHERE tournament_id = $t ORDER BY play_order")
+    .all({ t: tournamentId });
+}
+
+export function listGames(matchId: number): Game[] {
+  return db
+    .query<Game, { m: number }>("SELECT * FROM games WHERE match_id = $m ORDER BY game_number")
+    .all({ m: matchId });
+}
+
+export interface GameOutcome {
+  game: Game;
+  /** The reported match, re-read after any update (status/winner). */
+  match: Match;
+  series: SeriesState;
+  /** The match that went live because this game decided the series, if any. */
+  next: Match | null;
+  /** Set when this game decided the final match of the tournament. */
+  championId: string | null;
+}
+
+/**
+ * Saves one game of the live match. If it decides the series, closes the match,
+ * advances the winner (single elim), and then either puts the next playable match
+ * live with p1 on `nextP1Team` or, when every match is done, finishes the tournament.
+ */
+export const recordGame = db.transaction(
+  (match: Match, p1Score: number, p2Score: number, reportedBy: string, nextP1Team: Team): GameOutcome => {
+    const gameNumber = listGames(match.id).length + 1;
+    const gameId = Number(
+      db
+        .query(
+          `INSERT INTO games (match_id, game_number, p1_score, p2_score, reported_by)
+           VALUES ($m, $n, $p1, $p2, $by)`,
+        )
+        .run({ m: match.id, n: gameNumber, p1: p1Score, p2: p2Score, by: reportedBy }).lastInsertRowid,
+    );
+    const game = db.query<Game, { id: number }>("SELECT * FROM games WHERE id = $id").get({ id: gameId })!;
+    const series = seriesState(listGames(match.id), match.best_of);
+
+    let next: Match | null = null;
+    let championId: string | null = null;
+    if (series.winner) {
+      const winnerId = series.winner === "p1" ? match.p1_id! : match.p2_id!;
+      db.query("UPDATE matches SET status = 'done', winner_id = $w WHERE id = $id").run({ w: winnerId, id: match.id });
+      if (match.next_match_id) {
+        const column = match.next_slot === "p1" ? "p1_id" : "p2_id";
+        db.query(`UPDATE matches SET ${column} = $w WHERE id = $id`).run({ w: winnerId, id: match.next_match_id });
+      }
+
+      const matches = listMatches(match.tournament_id);
+      const upNext = nextMatchToPlay(matches);
+      if (upNext) {
+        goLive(upNext.id, nextP1Team);
+        next = getMatch(upNext.id);
+      } else if (allMatchesDone(matches)) {
+        championId = winnerId;
+        db.query(
+          "UPDATE tournaments SET status = 'done', winner_id = $w, finished_at = datetime('now') WHERE id = $id",
+        ).run({ w: winnerId, id: match.tournament_id });
+      }
+    }
+
+    return { game, match: getMatch(match.id)!, series, next, championId };
+  },
+);
+
+export function getMatch(id: number): Match | null {
+  return db.query<Match, { id: number }>("SELECT * FROM matches WHERE id = $id").get({ id });
 }

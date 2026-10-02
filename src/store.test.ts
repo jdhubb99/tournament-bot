@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { db } from "./db.ts";
 import { singleElim } from "./logic/bracket.ts";
 import * as store from "./store.ts";
-import { resetDb } from "./test/helpers.ts";
+import { resetDb, startedTournament } from "./test/helpers.ts";
 
 const lengths = { semis: 3, final: 5 };
 
@@ -110,5 +110,62 @@ describe("startTournament", () => {
 
   it("has no live match before start", () => {
     expect(store.getLiveMatch(signup("g", ["a"]))).toBeNull();
+  });
+});
+
+describe("recordGame", () => {
+  const live = (id: number) => store.getLiveMatch(id)!;
+
+  it("saves a game and keeps an undecided series live", () => {
+    const id = startedTournament({ semis: 3, final: 3 });
+    const outcome = store.recordGame(live(id), 3, 1, "reporter", "gooners");
+    expect(outcome.game).toMatchObject({ game_number: 1, p1_score: 3, p2_score: 1, reported_by: "reporter" });
+    expect(outcome.series).toMatchObject({ p1Wins: 1, p2Wins: 0, winner: null });
+    expect(outcome.match.status).toBe("live");
+    expect(outcome.next).toBeNull();
+    expect(outcome.championId).toBeNull();
+    expect(store.listGames(outcome.match.id)).toHaveLength(1);
+  });
+
+  it("closes a decided series, advances the winner, and puts the next match live", () => {
+    const id = startedTournament();
+    const outcome = store.recordGame(live(id), 0, 2, "reporter", "gooners");
+    expect(outcome.match).toMatchObject({ status: "done", winner_id: "b" });
+    expect(outcome.next).toMatchObject({ label: "Semifinal 2", status: "live", p1_team: "gooners" });
+
+    const final = store.listMatches(id).find((m) => m.label === "Final")!;
+    expect(final).toMatchObject({ p1_id: "b", p2_id: null, status: "pending" });
+  });
+
+  it("fills the final's p2 from Semifinal 2 and crowns the champion after the final", () => {
+    const id = startedTournament();
+    store.recordGame(live(id), 1, 0, "r", "goons"); // a wins SF1
+    const sf2 = store.recordGame(live(id), 0, 4, "r", "goons"); // d wins SF2
+    expect(sf2.next).toMatchObject({ label: "Final", p1_id: "a", p2_id: "d" });
+
+    store.recordGame(live(id), 0, 1, "r", "goons");
+    store.recordGame(live(id), 2, 1, "r", "goons");
+    const last = store.recordGame(live(id), 1, 3, "r", "goons");
+    expect(last.series).toMatchObject({ p1Wins: 1, p2Wins: 2, winner: "p2" });
+    expect(last.championId).toBe("d");
+    expect(last.next).toBeNull();
+    expect(store.getTournament(id)).toMatchObject({ status: "done", winner_id: "d" });
+    expect(store.getOpenTournament("guild-1")).toBeNull();
+  });
+
+  it("waits instead of finishing when the next match is missing a player", () => {
+    const id = startedTournament();
+    db.query("UPDATE matches SET p1_id = NULL, p2_id = NULL WHERE label = 'Semifinal 2'").run();
+    const outcome = store.recordGame(live(id), 1, 0, "r", "goons");
+    expect(outcome.next).toBeNull();
+    expect(outcome.championId).toBeNull();
+    expect(store.getTournament(id)?.status).toBe("active");
+  });
+
+  it("looks up players and matches", () => {
+    startedTournament();
+    expect(store.getPlayer("a")).toEqual({ discord_id: "a", display_name: "A" });
+    expect(store.getPlayer("nobody")).toBeNull();
+    expect(store.getMatch(999)).toBeNull();
   });
 });
