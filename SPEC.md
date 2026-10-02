@@ -139,7 +139,7 @@ Match status: `pending` → `live` → `done`.
   - Series not decided: post "Jake leads the series 2–1" (or "Series tied 1–1"). Always say "series" so it isn't confused with a game's goals. A best of 1 skips this line, because its only game decides it.
   - Series decided: close the match, advance the winner (single elim), post the series result, announce the next match.
   - Final match decided: crown the champion and post a summary.
-- Every game stores `reported_by`, and every report is posted publicly in the channel so bad entries get spotted.
+- Every game stores `reported_by`, and every report is posted publicly in the channel so bad entries get spotted. The post doesn't mention the reporter, because Discord already shows who used `/report` above the reply.
 
 ### Undo
 

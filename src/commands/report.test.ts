@@ -65,7 +65,7 @@ describe("/report results", () => {
 
     expect(interaction.deferReply).toHaveBeenCalled();
     const message = arg(interaction.editReply);
-    expect(message.content).toBe("Game 1 · Semifinal 1: A 2 – 4 **B** (reported by <@ref>)\nB leads the series 1–0");
+    expect(message.content).toBe("Game 1 · Semifinal 1: A 2 – 4 **B**\nB leads the series 1–0");
     expect(message.embeds).toEqual([]);
     expect(message.allowedMentions).toEqual({ parse: [] });
     expect(listGames(getLiveMatch(id)!.id)[0]).toMatchObject({ p1_score: 2, p2_score: 4, reported_by: "ref" });
@@ -77,7 +77,7 @@ describe("/report results", () => {
     const interaction = await send("a", 3, 0);
 
     const message = arg(interaction.editReply);
-    expect(message.content).toBe("Game 1 · Semifinal 1: **A** 3 – 0 B (reported by <@ref>)");
+    expect(message.content).toBe("Game 1 · Semifinal 1: **A** 3 – 0 B");
     const embed = message.embeds[0].toJSON();
     expect(embed.title).toBe("Semifinal 1 — user-a wins");
     expect(embed.fields).toEqual([{ name: "Final score", value: "**user-a** 3 – 0 user-b" }]);
@@ -94,7 +94,7 @@ describe("/report results", () => {
     await send("a", 2, 0);
     const last = await send("d", 4, 3);
 
-    expect(arg(last.editReply).content).toBe("Game 3 · Final: A 3 – 4 **D** (reported by <@ref>)\nD wins the series 2–1");
+    expect(arg(last.editReply).content).toBe("Game 3 · Final: A 3 – 4 **D**\nD wins the series 2–1");
     const posts = channel.send.mock.calls.map((c) => (c[0] as { content: string }).content);
     expect(posts).toEqual([
       "Up next: <@c> vs <@d> (Bo1)",

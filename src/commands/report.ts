@@ -54,7 +54,7 @@ export const report: Command = {
     const p2Name = getPlayer(match.p2_id!)!.display_name;
     const [bold1, bold2] = check.p1Score > check.p2Score ? [`**${p1Name}**`, p2Name] : [p1Name, `**${p2Name}**`];
     const lines = [
-      `Game ${outcome.game.game_number} · ${match.label}: ${bold1} ${check.p1Score} – ${check.p2Score} ${bold2} (reported by <@${interaction.user.id}>)`,
+      `Game ${outcome.game.game_number} · ${match.label}: ${bold1} ${check.p1Score} – ${check.p2Score} ${bold2}`,
     ];
     // A best of 1 is decided by its only game, so a series line would just repeat it.
     if (match.best_of > 1) lines.push(describeSeries(outcome.series, p1Name, p2Name));
