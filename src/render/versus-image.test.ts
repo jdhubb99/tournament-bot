@@ -9,6 +9,8 @@ function size(png: Uint8Array) {
   return { width: view.getUint32(16), height: view.getUint32(20) };
 }
 
+const same = (a: Uint8Array, b: Uint8Array) => Buffer.from(a).equals(Buffer.from(b));
+
 function solidPng(color: string): Uint8Array {
   return new Resvg(`<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="${color}"/></svg>`)
     .render()
@@ -16,15 +18,22 @@ function solidPng(color: string): Uint8Array {
 }
 
 describe("renderVersusImage", () => {
-  it("renders a 600x240 PNG with both avatars", () => {
-    const png = renderVersusImage(solidPng("red"), solidPng("blue"));
+  it("renders a 600x290 PNG with both avatars", () => {
+    const png = renderVersusImage({ avatar: solidPng("red"), team: "goons" }, { avatar: solidPng("blue"), team: "gooners" });
     expect([...png.slice(0, 8)]).toEqual(PNG_SIGNATURE);
-    expect(size(png)).toEqual({ width: 600, height: 240 });
+    expect(size(png)).toEqual({ width: 600, height: 290 });
   });
 
   it("draws placeholders when avatars are missing, and the avatars change the output", () => {
-    const placeholders = renderVersusImage(null, null);
-    expect(size(placeholders)).toEqual({ width: 600, height: 240 });
-    expect(Buffer.from(placeholders).equals(Buffer.from(renderVersusImage(solidPng("red"), null)))).toBe(false);
+    const placeholders = renderVersusImage({ avatar: null, team: "goons" }, { avatar: null, team: "gooners" });
+    expect(size(placeholders)).toEqual({ width: 600, height: 290 });
+    const withAvatar = renderVersusImage({ avatar: solidPng("red"), team: "goons" }, { avatar: null, team: "gooners" });
+    expect(same(placeholders, withAvatar)).toBe(false);
+  });
+
+  it("colors each side by its team", () => {
+    const a = renderVersusImage({ avatar: null, team: "goons" }, { avatar: null, team: "gooners" });
+    const b = renderVersusImage({ avatar: null, team: "gooners" }, { avatar: null, team: "goons" });
+    expect(same(a, b)).toBe(false);
   });
 });

@@ -26,9 +26,9 @@ describe("matchEmbed", () => {
     p2: { id: "b", name: "Bob", avatarUrl: "https://cdn.test/b.png" },
   };
 
-  it("is yellow with the versus image while live", () => {
+  it("is red with the versus image while live", () => {
     const embed = matchEmbed({ ...players, label: "Semifinal 1", bestOf: 3, p1Wins: 1, p2Wins: 0 }).toJSON();
-    expect(embed.color).toBe(0xf1c40f);
+    expect(embed.color).toBe(0xed4245);
     expect(embed.title).toBe("Semifinal 1 — Live");
     expect(embed.image?.url).toBe("attachment://versus.png");
     expect(embed.thumbnail).toBeUndefined();

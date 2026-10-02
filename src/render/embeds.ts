@@ -1,7 +1,7 @@
 import { EmbedBuilder } from "discord.js";
 import { VERSUS_FILE } from "./versus-image.ts";
 
-const YELLOW = 0xf1c40f;
+const LIVE_RED = 0xed4245;
 const GREEN = 0x2ecc71;
 const BLURPLE = 0x5865f2;
 
@@ -32,7 +32,7 @@ export function signupEmbed(opts: {
 }
 
 /**
- * Live: yellow, with both avatars in the attached versus image (see versus-image.ts).
+ * Live: red ("on air"), with both avatars in the attached versus image (see versus-image.ts).
  * Decided: green, showing only the winner's avatar.
  */
 export function matchEmbed(opts: {
@@ -55,5 +55,5 @@ export function matchEmbed(opts: {
   if (winner) {
     return embed.setColor(GREEN).setTitle(`${opts.label} — ${winner.name} wins`).setThumbnail(winner.avatarUrl);
   }
-  return embed.setColor(YELLOW).setTitle(`${opts.label} — Live`).setImage(`attachment://${VERSUS_FILE}`);
+  return embed.setColor(LIVE_RED).setTitle(`${opts.label} — Live`).setImage(`attachment://${VERSUS_FILE}`);
 }

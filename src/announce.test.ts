@@ -17,6 +17,7 @@ const match: Match = {
   next_match_id: 3,
   next_slot: "p1",
   status: "live",
+  p1_team: "gooners",
 };
 
 let fetchSpy: Mock<typeof fetch>;
@@ -84,6 +85,11 @@ describe("announceLiveMatch", () => {
     } finally {
       delete process.env.DEV_COMMANDS;
     }
+  });
+
+  it("refuses a match without teams", async () => {
+    await expect(announceLiveMatch({ ...match, p1_team: null })).rejects.toThrow("Match 1 went live without teams");
+    expect(channel.send).not.toHaveBeenCalled();
   });
 
   it("refuses a match without both players", async () => {
