@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { matchEmbed, signupEmbed } from "./embeds.ts";
+import { championEmbed, matchEmbed, resultLine, signupEmbed } from "./embeds.ts";
 
 describe("signupEmbed", () => {
   const base = { semisBestOf: 1, finalBestOf: 3, maxPlayers: 8 };
@@ -46,5 +46,30 @@ describe("matchEmbed", () => {
     expect(embed.title).toBe("Final — Bob wins");
     expect(embed.thumbnail?.url).toBe("https://cdn.test/b.png");
     expect(embed.image).toBeUndefined();
+  });
+});
+
+describe("resultLine", () => {
+  it("bolds the winner", () => {
+    expect(resultLine({ label: "Final", winnerName: "Jake", loserName: "Benny", winnerScore: 2, loserScore: 1 })).toBe(
+      "Final: **Jake** def. Benny (2–1)",
+    );
+  });
+});
+
+describe("championEmbed", () => {
+  it("is gold with the champion's avatar, runner-up and results", () => {
+    const embed = championEmbed({
+      champion: { id: "j", name: "Jake", avatarUrl: "https://cdn.test/j.png" },
+      runnerUpName: "Benny",
+      results: ["Semifinal 1: **Jake** def. A (3–1)", "Final: **Jake** def. Benny (2–1)"],
+    }).toJSON();
+    expect(embed.color).toBe(0xd4af37);
+    expect(embed.title).toBe("🏆 Jake is the champion!");
+    expect(embed.thumbnail?.url).toBe("https://cdn.test/j.png");
+    expect(embed.fields).toEqual([
+      { name: "Runner-up", value: "Benny" },
+      { name: "Results", value: "Semifinal 1: **Jake** def. A (3–1)\nFinal: **Jake** def. Benny (2–1)" },
+    ]);
   });
 });

@@ -57,3 +57,27 @@ export function matchEmbed(opts: {
   }
   return embed.setColor(LIVE_RED).setTitle(`${opts.label} — Live`).setImage(`attachment://${VERSUS_FILE}`);
 }
+
+const GOLD = 0xd4af37;
+
+/** "Semifinal 1: **Jake** def. Benny (2–1)". Bo1 shows the goals, longer series show games won. */
+export function resultLine(opts: {
+  label: string;
+  winnerName: string;
+  loserName: string;
+  winnerScore: number;
+  loserScore: number;
+}): string {
+  return `${opts.label}: **${opts.winnerName}** def. ${opts.loserName} (${opts.winnerScore}–${opts.loserScore})`;
+}
+
+export function championEmbed(opts: { champion: EmbedPlayer; runnerUpName: string; results: string[] }): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(GOLD)
+    .setTitle(`🏆 ${opts.champion.name} is the champion!`)
+    .setThumbnail(opts.champion.avatarUrl)
+    .addFields(
+      { name: "Runner-up", value: opts.runnerUpName },
+      { name: "Results", value: opts.results.join("\n") },
+    );
+}
