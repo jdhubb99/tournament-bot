@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn, type Mock } from "bun:test";
 import {
   announceChampion,
+  announceLeagueFinished,
   announceLiveMatch,
   bracketImage,
   currentMatchPost,
@@ -10,7 +11,7 @@ import {
 } from "./announce.ts";
 import { useTournamentChannel } from "./channel.ts";
 import { getLiveMatch, getMatch, recordGame, type Match } from "./store.ts";
-import { arg, cast, fakeChannel, resetDb, startedTournament } from "./test/helpers.ts";
+import { arg, cast, fakeChannel, playLeague, resetDb, startedRoundRobin, startedTournament } from "./test/helpers.ts";
 
 const match: Match = {
   id: 1,
@@ -252,5 +253,48 @@ describe("currentMatchPost", () => {
       image: { url: "attachment://scoreboard.png" },
     });
     expect(file.name).toBe("scoreboard.png");
+  });
+});
+
+describe("round robin posts", () => {
+  let channel: ReturnType<typeof fakeChannel>;
+  beforeEach(() => {
+    resetDb();
+    channel = fakeChannel();
+    useTournamentChannel(cast(channel));
+  });
+
+  it("renders the league table for /bracket, before and after the league", async () => {
+    const id = startedRoundRobin();
+    const before = Buffer.from((await bracketImage(id)).attachment as Buffer);
+    playLeague(id);
+    const file = await bracketImage(id);
+    expect(file.name).toBe("bracket.png");
+    expect(before.equals(file.attachment as Buffer)).toBe(false);
+    expect(fetchSpy).toHaveBeenCalledTimes(10); // five avatars, twice
+  });
+
+  it("lists the league matches still to play while the league runs", async () => {
+    const { playLeagueMatch } = await import("./test/helpers.ts");
+    const id = startedRoundRobin();
+    const height = async () => new DataView(((await bracketImage(id)).attachment as Buffer).buffer).getUint32(20);
+    const withList = await height(); // 10 left: 4 listed plus "+6 more"
+    for (let i = 0; i < 7; i++) playLeagueMatch(id);
+    const shorter = await height(); // 3 left, all listed
+    for (let i = 0; i < 3; i++) playLeagueMatch(id);
+    const none = await height(); // league done; the final is on the right instead
+    expect(withList).toBeGreaterThan(shorter);
+    expect(shorter).toBeGreaterThan(none);
+  });
+
+  it("announces the end of the league with the table", async () => {
+    const id = startedRoundRobin();
+    playLeague(id);
+    await announceLeagueFinished(id);
+    const message = arg(channel.send);
+    expect(message.content).toBe("📊 The league is done! **A** and **B** go to the final.");
+    expect(message.embeds[0].toJSON().title).toBe("Final league table");
+    expect(message.files.map((f: { name: string }) => f.name)).toEqual(["bracket.png"]);
+    expect(message.allowedMentions).toEqual({ parse: [] });
   });
 });

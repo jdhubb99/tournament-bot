@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { useTournamentChannel } from "../channel.ts";
 import { db } from "../db.ts";
 import { createTournament, getLiveMatch, getTournament, listGames } from "../store.ts";
-import { arg, cast, fakeChannel, fakeInteraction, resetDb, startedTournament } from "../test/helpers.ts";
+import { arg, cast, fakeChannel, fakeInteraction, resetDb, startedRoundRobin, startedTournament } from "../test/helpers.ts";
 import { report } from "./report.ts";
 
 let channel: ReturnType<typeof fakeChannel>;
@@ -117,4 +117,20 @@ describe("/report results", () => {
     db.query("UPDATE matches SET status = 'done' WHERE tournament_id = $id").run({ id });
     expect(errorOf(await send("a", 1, 0))).toBe("There's no live match to report right now.");
   });
+});
+
+it("plays a full 5-player round robin end to end", async () => {
+  const id = startedRoundRobin(3);
+  // The alphabetically earlier player wins every league match, so the table ends a, b, c, d, e.
+  for (let i = 0; i < 10; i++) {
+    const live = getLiveMatch(id)!;
+    await send(live.p1_id! < live.p2_id! ? live.p1_id! : live.p2_id!, 2, 1);
+  }
+  const posts = () => channel.send.mock.calls.map((c) => (c[0] as { content: string }).content);
+  expect(posts().slice(-2)).toEqual(["📊 The league is done! **A** and **B** go to the final.", "Up next: <@a> vs <@b> (Bo3)"]);
+
+  await send("b", 3, 1);
+  await send("b", 2, 0);
+  expect(posts().at(-1)).toBe("🏆 <@b> wins the tournament!");
+  expect(getTournament(id)).toMatchObject({ status: "done", winner_id: "b" });
 });

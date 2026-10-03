@@ -3,7 +3,8 @@ import { ChannelType } from "discord.js";
 import { useTournamentChannel } from "../channel.ts";
 import { db } from "../db.ts";
 import { singleElim } from "../logic/bracket.ts";
-import { addTournamentPlayer, createTournament, startTournament, upsertPlayer } from "../store.ts";
+import { roundRobinPlan } from "../logic/roundrobin.ts";
+import { addTournamentPlayer, createTournament, getLiveMatch, recordGame, startTournament, upsertPlayer, type GameOutcome } from "../store.ts";
 
 /** Casts a hand-built fake to the discord.js type a function expects. */
 export function cast<T>(fake: unknown): T {
@@ -125,4 +126,32 @@ export function startedTournament(lengths = { semis: 1, final: 3 }): number {
   }
   startTournament(id, "single_elim", seeded, singleElim(seeded, lengths), "goons");
   return id;
+}
+
+/** An active 5-player round robin with players a–e (seeded in that order, names A–E). Match 1 is live. */
+export function startedRoundRobin(finalBestOf = 3): number {
+  const id = createTournament("guild-1", { semis: 1, final: finalBestOf });
+  const seeded = ["a", "b", "c", "d", "e"];
+  for (const p of seeded) {
+    upsertPlayer(p, p.toUpperCase());
+    addTournamentPlayer(id, p);
+  }
+  startTournament(id, "round_robin", seeded, roundRobinPlan(seeded, finalBestOf), "goons");
+  return id;
+}
+
+/**
+ * Reports the live best-of-1 league match with the alphabetically earlier player winning 2–1,
+ * so a full league ends a (4 wins), b (3), c (2), d (1), e (0).
+ */
+export function playLeagueMatch(id: number): GameOutcome {
+  const match = getLiveMatch(id)!;
+  const p1Wins = match.p1_id! < match.p2_id!;
+  return recordGame(match, p1Wins ? 2 : 1, p1Wins ? 1 : 2, "r", "goons");
+}
+
+/** Plays every league match; returns the outcome of the last one (which fills the final). */
+export function playLeague(id: number): GameOutcome {
+  for (let i = 0; i < 9; i++) playLeagueMatch(id);
+  return playLeagueMatch(id);
 }

@@ -3,6 +3,7 @@ import {
   bracketEmbed,
   championEmbed,
   historyEmbed,
+  leagueTableEmbed,
   liveMatchEmbed,
   matchResultEmbed,
   resultLine,
@@ -144,5 +145,11 @@ describe("historyEmbed", () => {
   it("lists tournaments or says there are none", () => {
     expect(historyEmbed(["one", "two"]).toJSON()).toMatchObject({ title: "Tournament history", description: "one\n\ntwo" });
     expect(historyEmbed([]).toJSON().description).toBe("No finished tournaments yet.");
+  });
+});
+
+describe("leagueTableEmbed", () => {
+  it("is gold and shows the attached table", () => {
+    expect(leagueTableEmbed().toJSON()).toMatchObject({ title: "Final league table", image: { url: "attachment://bracket.png" } });
   });
 });

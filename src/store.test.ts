@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { db } from "./db.ts";
 import { singleElim } from "./logic/bracket.ts";
 import * as store from "./store.ts";
-import { resetDb, startedTournament } from "./test/helpers.ts";
+import { playLeague, playLeagueMatch, resetDb, startedRoundRobin, startedTournament } from "./test/helpers.ts";
 
 const lengths = { semis: 3, final: 5 };
 
@@ -282,5 +282,60 @@ describe("titlesUpTo", () => {
     expect(store.titlesUpTo("guild-1", "a", third)).toBe(2);
     expect(store.titlesUpTo("guild-1", "b", third)).toBe(1);
     expect(store.titlesUpTo("guild-2", "a", third)).toBe(0);
+  });
+});
+
+describe("round robin", () => {
+  const final = (id: number) => store.listMatches(id).at(-1)!;
+
+  it("keeps the final empty until every league match is done", () => {
+    const id = startedRoundRobin();
+    for (let i = 0; i < 9; i++) expect(playLeagueMatch(id).leagueFinished).toBe(false);
+    expect(final(id)).toMatchObject({ p1_id: null, p2_id: null, status: "pending" });
+  });
+
+  it("fills the final with the top 2 (1st as p1) and puts it live when the league ends", () => {
+    const id = startedRoundRobin(3);
+    const last = playLeague(id);
+    expect(last.leagueFinished).toBe(true);
+    expect(last.next).toMatchObject({ label: "Final", p1_id: "a", p2_id: "b", status: "live", best_of: 3 });
+    expect(store.leagueStandings(id).map((r) => [r.playerId, r.wins])).toEqual([
+      ["a", 4],
+      ["b", 3],
+      ["c", 2],
+      ["d", 1],
+      ["e", 0],
+    ]);
+  });
+
+  it("crowns the final's winner, not the top of the table", () => {
+    const id = startedRoundRobin(1);
+    playLeague(id);
+    const outcome = store.recordGame(store.getLiveMatch(id)!, 0, 3, "r", "goons"); // b wins the final
+    expect(outcome.championId).toBe("b");
+    expect(store.getTournament(id)).toMatchObject({ status: "done", winner_id: "b" });
+  });
+
+  it("empties the final again when the last league game is undone", () => {
+    const id = startedRoundRobin();
+    playLeague(id);
+    const outcome = store.undoLastGame(id)!;
+    expect(outcome.paused?.label).toBe("Final");
+    expect(final(id)).toMatchObject({ p1_id: null, p2_id: null, status: "pending", p1_team: null });
+    expect(store.getLiveMatch(id)?.label).toBe("Match 10");
+  });
+
+  it("keeps the final's players when a final game is undone", () => {
+    const id = startedRoundRobin();
+    playLeague(id);
+    store.recordGame(store.getLiveMatch(id)!, 3, 0, "r", "goons");
+    store.undoLastGame(id);
+    expect(final(id)).toMatchObject({ p1_id: "a", p2_id: "b", status: "live" });
+  });
+
+  it("only counts decided league matches in the table", () => {
+    const id = startedRoundRobin();
+    playLeagueMatch(id);
+    expect(store.leagueStandings(id).reduce((n, r) => n + r.played, 0)).toBe(2);
   });
 });

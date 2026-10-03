@@ -127,6 +127,11 @@ export function bracketEmbed(opts: { title: string; live: string | null }): Embe
   return embed;
 }
 
+/** The final league table, posted when a round-robin league ends (the image is the /bracket one). */
+export function leagueTableEmbed(): EmbedBuilder {
+  return new EmbedBuilder().setColor(GOLD).setTitle("Final league table").setImage(`attachment://${BRACKET_FILE}`);
+}
+
 /** /history: one entry per finished tournament, newest first, separated by blank lines. */
 export function historyEmbed(entries: string[]): EmbedBuilder {
   return new EmbedBuilder()

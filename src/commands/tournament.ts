@@ -11,6 +11,7 @@ import { announceLiveMatch } from "../announce.ts";
 import { tournamentChannel } from "../channel.ts";
 import { singleElim } from "../logic/bracket.ts";
 import { shuffle } from "../logic/random.ts";
+import { roundRobinPlan } from "../logic/roundrobin.ts";
 import { randomTeam } from "../logic/teams.ts";
 import { signupEmbed } from "../render/embeds.ts";
 import {
@@ -91,15 +92,19 @@ async function begin(interaction: ButtonInteraction<"cached">, tournament: Tourn
     await interaction.reply(ephemeral(`At least ${MIN_PLAYERS} players are needed to start (${players.length} joined).`));
     return;
   }
-  // TODO(phases 5–6): round robin for 5, groups for 6–7, 8-player single elim.
-  if (players.length !== 4) {
-    await interaction.reply(ephemeral(`Only 4-player tournaments are supported so far (${players.length} joined).`));
+  // TODO(phase 6): groups for 6–7 players, single elim for 8.
+  if (players.length > 5) {
+    await interaction.reply(ephemeral(`Only 4 or 5 player tournaments are supported so far (${players.length} joined).`));
     return;
   }
 
   const seeded = shuffle(players.map((p) => p.discord_id));
-  const plan = singleElim(seeded, { semis: tournament.semis_best_of, final: tournament.final_best_of });
-  startTournament(tournament.id, "single_elim", seeded, plan, randomTeam());
+  if (players.length === 4) {
+    const plan = singleElim(seeded, { semis: tournament.semis_best_of, final: tournament.final_best_of });
+    startTournament(tournament.id, "single_elim", seeded, plan, randomTeam());
+  } else {
+    startTournament(tournament.id, "round_robin", seeded, roundRobinPlan(seeded, tournament.final_best_of), randomTeam());
+  }
 
   await interaction.update(signupMessage(tournament, true));
   await announceLiveMatch(getLiveMatch(tournament.id)!);

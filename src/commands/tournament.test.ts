@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { useTournamentChannel } from "../channel.ts";
 import { db } from "../db.ts";
-import { getLiveMatch, getOpenTournament, getTournament, listTournamentPlayers } from "../store.ts";
+import { getLiveMatch, getOpenTournament, getTournament, listMatches, listTournamentPlayers } from "../store.ts";
 import { arg, cast, fakeChannel, fakeInteraction, resetDb } from "../test/helpers.ts";
 import { tournament } from "./tournament.ts";
 
@@ -124,10 +124,23 @@ describe("signup buttons", () => {
 
   it("refuses player counts whose format isn't built yet", async () => {
     const id = await startSignup();
-    await joinPlayers(id, 5);
+    await joinPlayers(id, 6);
     const interaction = await press("start", id);
-    expect(arg(interaction.reply).content).toBe("Only 4-player tournaments are supported so far (5 joined).");
+    expect(arg(interaction.reply).content).toBe("Only 4 or 5 player tournaments are supported so far (6 joined).");
     expect(getTournament(id)?.status).toBe("signup");
+  });
+
+  it("starts 5 players as a round robin with an empty final and announces Match 1", async () => {
+    const id = await startSignup({ final: 5 });
+    await joinPlayers(id, 5);
+    await press("start", id);
+
+    expect(getTournament(id)).toMatchObject({ status: "active", format: "round_robin" });
+    const matches = listMatches(id);
+    expect(matches).toHaveLength(11);
+    expect(matches[10]).toMatchObject({ label: "Final", p1_id: null, p2_id: null, best_of: 5, play_order: 11 });
+    expect(getLiveMatch(id)).toMatchObject({ label: "Match 1", best_of: 1 });
+    expect(arg(channel.send).content).toStartWith("Up next: ");
   });
 
   it("starts a 4-player bracket and announces Semifinal 1", async () => {
