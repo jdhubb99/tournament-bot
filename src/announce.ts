@@ -36,6 +36,11 @@ async function embedPlayer(id: string): Promise<EmbedPlayer> {
   return { id, name: user.displayName, avatarUrl: user.displayAvatarURL(AVATAR_OPTIONS) };
 }
 
+/** Every listed player's avatar, downloaded in parallel (null where a download failed). */
+export async function avatarsFor(ids: readonly string[]): Promise<Map<string, Uint8Array | null>> {
+  return new Map(await Promise.all(ids.map(async (id) => [id, await fetchAvatar((await embedPlayer(id)).avatarUrl)] as const)));
+}
+
 /** Downloads an avatar; null on any failure so the image falls back to a placeholder. */
 export async function fetchAvatar(url: string): Promise<Uint8Array | null> {
   try {
@@ -168,10 +173,7 @@ export async function bracketImage(tournamentId: number): Promise<AttachmentBuil
   const seeds = new Map(listTournamentPlayers(tournamentId).map((p, i) => [p.discord_id, i + 1]));
 
   // Everyone in the tournament (the champion is among them).
-  const ids = [...seeds.keys()];
-  const avatars = new Map(
-    await Promise.all(ids.map(async (id) => [id, await fetchAvatar((await embedPlayer(id)).avatarUrl)] as const)),
-  );
+  const avatars = await avatarsFor([...seeds.keys()]);
 
   const slot = (match: Match, side: "p1" | "p2"): BracketSlot => {
     const id = side === "p1" ? match.p1_id : match.p2_id;
