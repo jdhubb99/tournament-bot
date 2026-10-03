@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS tournament_players (
   player_id     TEXT NOT NULL REFERENCES players(discord_id),
   seed          INTEGER,
   group_label   TEXT CHECK (group_label IN ('A','B')),
+  dropped_after_game INTEGER,  -- set by /tournament forfeit: the tournament's newest game id then (0 if none)
   PRIMARY KEY (tournament_id, player_id)
 );
 
@@ -71,6 +72,10 @@ function migrate(db: Database): void {
   const matchColumns = db.query<{ name: string }, []>("PRAGMA table_info(matches)").all().map((c) => c.name);
   if (!matchColumns.includes("p1_team")) {
     db.exec("ALTER TABLE matches ADD COLUMN p1_team TEXT CHECK (p1_team IN ('goons','gooners'))");
+  }
+  const playerColumns = db.query<{ name: string }, []>("PRAGMA table_info(tournament_players)").all().map((c) => c.name);
+  if (!playerColumns.includes("dropped_after_game")) {
+    db.exec("ALTER TABLE tournament_players ADD COLUMN dropped_after_game INTEGER");
   }
 }
 
