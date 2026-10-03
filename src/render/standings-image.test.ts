@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { BracketMatch, BracketSlot } from "./bracket-image.ts";
-import { renderStandingsImage, type StandingsImageRow } from "./standings-image.ts";
+import { renderGroupsImage, renderStandingsImage, type StandingsImageRow } from "./standings-image.ts";
 
 const size = (png: Uint8Array) => {
   const view = new DataView(png.buffer, png.byteOffset);
@@ -70,5 +70,25 @@ describe("up next list", () => {
     const live = renderStandingsImage(rows, emptyFinal, null, { matches: upcoming(1), more: 0 });
     const waiting = renderStandingsImage(rows, emptyFinal, null, { matches: [{ ...upcoming(1)[0]!, live: false }], more: 0 });
     expect(same(live, waiting)).toBe(false);
+  });
+});
+
+describe("renderGroupsImage", () => {
+  const playoffs: BracketMatch[] = [
+    { label: "Semifinal 1", bestOf: 1, status: "pending", p1: slot(null, { seed: "A1" }), p2: slot(null, { seed: "B2" }) },
+    { label: "Semifinal 2", bestOf: 1, status: "pending", p1: slot(null, { seed: "B1" }), p2: slot(null, { seed: "A2" }) },
+    { label: "Final", bestOf: 3, status: "pending", p1: slot(null), p2: slot(null) },
+  ];
+  const groups = { A: rows.slice(0, 4), B: rows.slice(4).concat(row("F", 0, 1, 0, 1), row("G", 0, 1, 0, 1)) };
+
+  it("stacks both group tables beside the playoff bracket", () => {
+    // Group A has 4 rows and Group B 3: both tables, the gap and the key on the left; the bracket on the right.
+    expect(size(renderGroupsImage(groups, playoffs, null))).toEqual({ width: 1710, height: 588 });
+  });
+
+  it("grows to fit the up next list and changes with the champion", () => {
+    const upNext = { matches: [{ label: "Group A - Match 5", p1: "A", p2: "B", live: true }], more: 0 };
+    expect(size(renderGroupsImage(groups, playoffs, null, upNext)).height).toBe(588 + 44 + 34 + 20);
+    expect(same(renderGroupsImage(groups, playoffs, null), renderGroupsImage(groups, playoffs, { name: "A", avatar: null }))).toBe(false);
   });
 });

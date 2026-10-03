@@ -121,6 +121,8 @@ Match status: `pending` → `live` → `done`.
 - Group standings use the same tiebreakers as round robin.
 - Top 2 from each group advance. Semi 1 = A1 vs B2, Semi 2 = B1 vs A2. Winners play the final.
 - Semi and final rows are created at start with empty players. Semis fill in once the last group match closes.
+- Group matches are labelled "Group A - Match 1" and so on. When the group stage ends, the bot posts "The group stage is done! Semifinal 1: A1 vs B2 · Semifinal 2: B1 vs A2" with the final group tables. Undoing the last group game empties both semis again.
+- `/bracket` shows both group tables (top 2 of each in gold) beside the playoff bracket. The semifinal slots are tagged A1, B2, B1 and A2 and read "Group A 1st" and so on until filled. An "Up next" card lists the remaining group matches.
 
 ### Teams
 
@@ -315,11 +317,11 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 **Done when:** a 5-player tournament runs 10 league matches, then a top-2 final, then crowns a champion.
 
 ### Phase 6 — 6 to 8 players
-- [ ] Join cap at 8, minimum 4 on Start
-- [ ] 8-player single elim (quarters → semis → final)
-- [ ] Groups format for 6–7: random split, alternating group schedule, group standings
-- [ ] Semis filled from group standings (A1 vs B2, B1 vs A2), then final
-- [ ] Unit tests for format selection by player count, group split, and semis seeding
+- [x] Join cap at 8, minimum 4 on Start
+- [x] 8-player single elim (quarters → semis → final)
+- [x] Groups format for 6–7: random split, alternating group schedule, group standings
+- [x] Semis filled from group standings (A1 vs B2, B1 vs A2), then final
+- [x] Unit tests for format selection by player count, group split, and semis seeding
 
 **Done when:** tournaments with 6, 7, and 8 players each run start to finish.
 

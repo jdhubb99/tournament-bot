@@ -2,7 +2,16 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { db } from "./db.ts";
 import { singleElim } from "./logic/bracket.ts";
 import * as store from "./store.ts";
-import { playLeague, playLeagueMatch, resetDb, startedRoundRobin, startedTournament } from "./test/helpers.ts";
+import {
+  playLeague,
+  playLeagueMatch,
+  playToTheEnd,
+  resetDb,
+  startedEight,
+  startedGroups,
+  startedRoundRobin,
+  startedTournament,
+} from "./test/helpers.ts";
 
 const lengths = { semis: 3, final: 5 };
 
@@ -290,14 +299,14 @@ describe("round robin", () => {
 
   it("keeps the final empty until every league match is done", () => {
     const id = startedRoundRobin();
-    for (let i = 0; i < 9; i++) expect(playLeagueMatch(id).leagueFinished).toBe(false);
+    for (let i = 0; i < 9; i++) expect(playLeagueMatch(id).stageFinished).toBe(false);
     expect(final(id)).toMatchObject({ p1_id: null, p2_id: null, status: "pending" });
   });
 
   it("fills the final with the top 2 (1st as p1) and puts it live when the league ends", () => {
     const id = startedRoundRobin(3);
     const last = playLeague(id);
-    expect(last.leagueFinished).toBe(true);
+    expect(last.stageFinished).toBe(true);
     expect(last.next).toMatchObject({ label: "Final", p1_id: "a", p2_id: "b", status: "live", best_of: 3 });
     expect(store.leagueStandings(id).map((r) => [r.playerId, r.wins])).toEqual([
       ["a", 4],
@@ -337,5 +346,86 @@ describe("round robin", () => {
     const id = startedRoundRobin();
     playLeagueMatch(id);
     expect(store.leagueStandings(id).reduce((n, r) => n + r.played, 0)).toBe(2);
+  });
+});
+
+describe("groups", () => {
+  const semis = (id: number) => store.listMatches(id).filter((m) => m.label.startsWith("Semifinal"));
+  const playGroupStage = (id: number) => {
+    let last!: store.GameOutcome;
+    while (store.getLiveMatch(id)!.round === 1) {
+      const m = store.getLiveMatch(id)!;
+      const p1Wins = m.p1_id! < m.p2_id!;
+      last = store.recordGame(m, p1Wins ? 2 : 1, p1Wins ? 1 : 2, "r", "goons");
+    }
+    return last;
+  };
+
+  it("builds each group's table from its own matches", () => {
+    const id = startedGroups(7);
+    playGroupStage(id);
+    const tables = store.groupStandings(id);
+    expect(tables.A.map((r) => [r.playerId, r.wins])).toEqual([["a", 3], ["b", 2], ["c", 1], ["d", 0]]);
+    expect(tables.B.map((r) => [r.playerId, r.wins])).toEqual([["e", 2], ["f", 1], ["g", 0]]);
+  });
+
+  it("fills the semis A1 vs B2 and B1 vs A2 when the last group match closes", () => {
+    const id = startedGroups(6);
+    expect(semis(id).every((m) => m.p1_id === null && m.p2_id === null)).toBe(true);
+    const last = playGroupStage(id);
+    expect(last.stageFinished).toBe(true);
+    expect(semis(id).map((m) => [m.label, m.p1_id, m.p2_id])).toEqual([
+      ["Semifinal 1", "a", "e"],
+      ["Semifinal 2", "d", "b"],
+    ]);
+    expect(last.next).toMatchObject({ label: "Semifinal 1", status: "live" });
+  });
+
+  it("empties both semis again when the last group game is undone", () => {
+    const id = startedGroups(6);
+    playGroupStage(id);
+    const undone = store.undoLastGame(id)!;
+    expect(undone.paused?.label).toBe("Semifinal 1");
+    expect(semis(id).every((m) => m.p1_id === null && m.p2_id === null && m.status === "pending")).toBe(true);
+    expect(store.getLiveMatch(id)?.round).toBe(1);
+  });
+
+  it("keeps the semis' players when a semifinal game is undone", () => {
+    const id = startedGroups(6);
+    playGroupStage(id);
+    store.recordGame(store.getLiveMatch(id)!, 3, 0, "r", "goons");
+    store.undoLastGame(id);
+    expect(semis(id).map((m) => [m.p1_id, m.p2_id])).toEqual([
+      ["a", "e"],
+      ["d", "b"],
+    ]);
+  });
+
+  it("has no standings-filled playoffs in a knockout", () => {
+    const id = startedTournament();
+    store.recordGame(store.getLiveMatch(id)!, 1, 0, "r", "goons");
+    expect(store.undoLastGame(id)!.reopened).toBe(true);
+    expect(store.listMatches(id).at(-1)).toMatchObject({ p1_id: null, p2_id: null });
+  });
+});
+
+describe("6, 7 and 8 players start to finish", () => {
+  it("runs a 6-player groups tournament: 6 group matches, 2 semis, a final", () => {
+    const id = startedGroups(6, { semis: 1, final: 1 });
+    expect(playToTheEnd(id)).toBe(9);
+    expect(store.getTournament(id)).toMatchObject({ status: "done", winner_id: "a" });
+  });
+
+  it("runs a 7-player groups tournament: 9 group matches, 2 semis, a final", () => {
+    const id = startedGroups(7, { semis: 1, final: 1 });
+    expect(playToTheEnd(id)).toBe(12);
+    expect(store.getTournament(id)).toMatchObject({ status: "done", winner_id: "a" });
+  });
+
+  it("runs an 8-player knockout: quarters, semis and a best-of-3 final", () => {
+    const id = startedEight({ semis: 1, final: 3 });
+    expect(playToTheEnd(id)).toBe(4 + 2 + 2);
+    expect(store.listMatches(id).map((m) => m.winner_id)).toEqual(["a", "c", "e", "g", "a", "e", "a"]);
+    expect(store.getTournament(id)).toMatchObject({ status: "done", winner_id: "a" });
   });
 });

@@ -3,7 +3,7 @@ import {
   bracketEmbed,
   championEmbed,
   historyEmbed,
-  leagueTableEmbed,
+  standingsEmbed,
   liveMatchEmbed,
   matchResultEmbed,
   resultLine,
@@ -148,8 +148,12 @@ describe("historyEmbed", () => {
   });
 });
 
-describe("leagueTableEmbed", () => {
-  it("is gold and shows the attached table", () => {
-    expect(leagueTableEmbed().toJSON()).toMatchObject({ title: "Final league table", image: { url: "attachment://bracket.png" } });
+describe("standingsEmbed", () => {
+  it("is gold and shows the attached table(s)", () => {
+    expect(standingsEmbed("Final group tables").toJSON()).toMatchObject({
+      color: 0xd4af37,
+      title: "Final group tables",
+      image: { url: "attachment://bracket.png" },
+    });
   });
 });

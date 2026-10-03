@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn, type Mock } from "bun:test";
 import {
   announceChampion,
-  announceLeagueFinished,
+  announceStageFinished,
   announceLiveMatch,
   bracketImage,
   currentMatchPost,
@@ -11,7 +11,18 @@ import {
 } from "./announce.ts";
 import { useTournamentChannel } from "./channel.ts";
 import { getLiveMatch, getMatch, recordGame, type Match } from "./store.ts";
-import { arg, cast, fakeChannel, playLeague, resetDb, startedRoundRobin, startedTournament } from "./test/helpers.ts";
+import {
+  arg,
+  cast,
+  fakeChannel,
+  playLeague,
+  playToTheEnd,
+  resetDb,
+  startedEight,
+  startedGroups,
+  startedRoundRobin,
+  startedTournament,
+} from "./test/helpers.ts";
 
 const match: Match = {
   id: 1,
@@ -290,11 +301,55 @@ describe("round robin posts", () => {
   it("announces the end of the league with the table", async () => {
     const id = startedRoundRobin();
     playLeague(id);
-    await announceLeagueFinished(id);
+    await announceStageFinished(id);
     const message = arg(channel.send);
     expect(message.content).toBe("📊 The league is done! **A** and **B** go to the final.");
     expect(message.embeds[0].toJSON().title).toBe("Final league table");
     expect(message.files.map((f: { name: string }) => f.name)).toEqual(["bracket.png"]);
     expect(message.allowedMentions).toEqual({ parse: [] });
+  });
+});
+
+describe("groups and 8-player posts", () => {
+  let channel: ReturnType<typeof fakeChannel>;
+  beforeEach(() => {
+    resetDb();
+    channel = fakeChannel();
+    useTournamentChannel(cast(channel));
+  });
+
+  const finishGroupStage = (id: number) => {
+    while (getLiveMatch(id)!.round === 1) {
+      const m = getLiveMatch(id)!;
+      recordGame(m, m.p1_id! < m.p2_id! ? 2 : 1, m.p1_id! < m.p2_id! ? 1 : 2, "r", "goons");
+    }
+  };
+
+  it("draws the groups image through the group stage, playoffs and champion", async () => {
+    const id = startedGroups(7);
+    const images = [Buffer.from((await bracketImage(id)).attachment as Buffer)];
+    finishGroupStage(id);
+    images.push(Buffer.from((await bracketImage(id)).attachment as Buffer));
+    playToTheEnd(id);
+    images.push(Buffer.from((await bracketImage(id)).attachment as Buffer));
+    expect(images[0]!.equals(images[1]!) || images[1]!.equals(images[2]!)).toBe(false);
+  });
+
+  it("announces the end of the group stage with the semifinal pairings", async () => {
+    const id = startedGroups(6);
+    finishGroupStage(id);
+    await announceStageFinished(id);
+    const message = arg(channel.send);
+    expect(message.content).toBe(
+      "📊 The group stage is done! Semifinal 1: **A** vs **E** · Semifinal 2: **D** vs **B**",
+    );
+    expect(message.embeds[0].toJSON().title).toBe("Final group tables");
+  });
+
+  it("draws an 8-player bracket", async () => {
+    const id = startedEight();
+    const file = await bracketImage(id);
+    const view = new DataView((file.attachment as Buffer).buffer, (file.attachment as Buffer).byteOffset);
+    expect([view.getUint32(16), view.getUint32(20)]).toEqual([1424, 708]); // quarters, semis, final, plus the key
   });
 });
