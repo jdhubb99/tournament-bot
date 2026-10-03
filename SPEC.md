@@ -157,8 +157,27 @@ Match status: `pending` → `live` → `done`.
 - If that game had closed a match, the match reopens and any advancement is reverted.
 - If it had ended the tournament, the tournament returns to active.
 - If it was the last league or group match, the playoff players filled from standings are cleared again (the final or semis go back to waiting).
+- Stops at a forfeit: if a player dropped after the last reported game, nothing is undone (see Forfeits). Undoing a game also undoes the forfeits it triggered.
 - Works on the guild's newest tournament while it's active, or after it has finished as long as no newer tournament has been started, so a wrong final report can still be fixed.
 - Everything the game caused is reversed: a match that went live after it goes back to waiting (its team coin flip is cleared), and the undo is posted publicly with the reopened match as it now stands: the versus image if it has no games left, otherwise the scoreboard with the corrected standing.
+
+### Forfeits (dropping a player)
+
+`/tournament forfeit player:@user` drops a player who has to leave, so everyone else can finish the tournament without cancelling it or redoing the seeding.
+
+- Anyone can run it during an active tournament. It first asks the person to confirm privately (it can't be undone), then posts the forfeit publicly and refreshes the live bracket.
+- Refused, privately, for: a tournament still in signup, a player who isn't in the tournament, one who has already dropped, or one who is already out (lost a knockout match, or missed the playoffs once the league or group stage ended).
+- A dropped player **forfeits** every match they have left: the opponent wins it without playing.
+  - If they're in the live match, it ends at once. Any games already played in it are kept as they were.
+  - A match with a dropped player never goes live. It's decided as soon as both its players are known. That can be right away (their remaining league or group matches, or a knockout match they were already in) or later (a final still waiting for the other semifinal).
+  - Then play carries on as after any decided match: the winner advances, a finished league or group stage fills the playoffs, and the next match goes live (or the tournament ends).
+- A forfeit win counts like any other series win: the winner advances (single elim) and gets the series win in league or group standings, with no games or goals. If both players of a match have dropped, p1 advances and forfeits again at the next match.
+- Dropped players sink to the bottom of league and group tables (shown dimmed), so the playoff places go to players still in it. A dropped player only gets a playoff place if there aren't enough other players, and then forfeits it.
+- The champion is always someone who didn't drop. While a tournament is active, the live match has two players still in it, so at least one remains after any forfeit. When only one is left, their remaining matches are all forfeits and they win.
+- A decided match whose games don't decide its series was won by forfeit. No extra column is needed. Results and the champion post show "Semifinal 1: **B** def. A (forfeit)", `/history` shows "beat A by forfeit in the final", and the bracket shows "FF" for the player who forfeited.
+- Stats (`/leaderboard`, `/stats`) leave out matches won by forfeit, including any games played in them before the forfeit. A title won through a forfeited final still counts.
+- `/undo` can't go back past a forfeit. If a forfeit is newer than the last reported game, `/undo` says so and changes nothing. Undoing a game also undoes any forfeits that game triggered (e.g. a semifinal win that sent its winner into a final against a dropped player, which ended the tournament).
+- During signup there's nothing to forfeit (a Leave button is a possible follow-up).
 
 ### Tournament channel
 
@@ -203,6 +222,7 @@ CREATE TABLE tournament_players (
   player_id     TEXT NOT NULL REFERENCES players(discord_id),
   seed          INTEGER,
   group_label   TEXT CHECK (group_label IN ('A','B')),  -- groups format only
+  dropped_after_game INTEGER,  -- set by /tournament forfeit: the id of the tournament's newest game at that point (0 if none); NULL while still in
   PRIMARY KEY (tournament_id, player_id)
 );
 
@@ -243,6 +263,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 |---|---|
 | `/tournament start [semis] [final]` | Open signup with Join/Start buttons |
 | `/tournament series [semis] [final]` | Change the semis and/or final length of the current tournament, in signup or mid-tournament (see Series length) |
+| `/tournament forfeit player` | Drop a player: they forfeit every match they have left (asks for private confirmation first; see Forfeits) |
 | `/tournament cancel` | Cancel the active tournament (asks the person for private confirmation first, then announces it in the channel) |
 | `/report winner winner_score loser_score` | Record a game in the live match |
 | `/undo` | Remove the last reported game |
@@ -257,7 +278,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 - Titles won (a title = winning the tournament final, in either format), series record, game record, goals for/against, goal differential
 - Head-to-head between any two players (series and games)
 - All queries accept an optional `game` filter; default is Rocket League. It matches ignoring case.
-- Stats count every decided match from finished and in-progress tournaments. Cancelled tournaments don't count.
+- Stats count every decided match from finished and in-progress tournaments, except matches won by forfeit. Cancelled tournaments don't count.
 - `/leaderboard` ranks everyone who has played by titles, then series wins, then game difference, then goal difference, then fewest series losses. It shows up to 15 players as an image (titles, series W-L, games W-L, GD; the top 3 in gold, silver and bronze) and says how many there are when there are more.
 - `/stats [player] [game]` defaults to yourself. It shows a profile card (avatar ringed in gold if they've won a title, titles, series, games, and goals with goal difference) above their head-to-head record against each opponent, most-played first.
 
@@ -277,7 +298,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 - Round robin gets a standings table image, with the top-2 final matchup shown once the league is done
 - Groups format gets two small standings tables plus the semis/final bracket
 - 8-player bracket layout (quarters → semis → final)
-- After each match, **edit** the existing bracket message (`bracket_msg_id`) instead of posting a new one. The live bracket is posted when a tournament starts, just before the first "Up next". It's edited after every report (so a best of 3's dots stay current), every undo, every series length change, and a cancel (title marked "(cancelled)"). If it was deleted, a fresh one is posted. A failed update is logged and never blocks the report
+- After each match, **edit** the existing bracket message (`bracket_msg_id`) instead of posting a new one. The live bracket is posted when a tournament starts, just before the first "Up next". It's edited after every report (so a best of 3's dots stay current), every undo, every series length change, every forfeit, and a cancel (title marked "(cancelled)"). If it was deleted, a fresh one is posted. A failed update is logged and never blocks the report
 - Keep rendering isolated in `render/` so it can be swapped without touching logic
 
 ## Phases
@@ -351,10 +372,20 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 - [x] Keep it running with a systemd service or a Docker restart policy (`restart: unless-stopped` in docker-compose.yml)
 - [x] Simple periodic backup of `bot.db` (a daily `VACUUM INTO` snapshot by the compose `backup` service into `./backups`, keeping the newest `BACKUP_KEEP`, default 14)
 
+### Phase 10 — Dropping players
+- [ ] `dropped_after_game` on `tournament_players`, with a migration for existing databases
+- [ ] Forfeit rules in `logic/forfeit.ts`: who is already out, the next match a dropped player can't play, dropped players last in a table
+- [ ] Forfeits in `store.ts`: `forfeitPlayer()`, and `recordGame()` deciding matches with a dropped player as they come up
+- [ ] `/undo` stops at a forfeit and undoes the forfeits a game triggered
+- [ ] `/tournament forfeit player` with private confirmation, the public post, and the live bracket refresh
+- [ ] Forfeits shown in results, `/history`, the bracket ("FF") and tables (dimmed, at the bottom); left out of stats
+
+**Done when:** a player can drop out of a 4-, 5-, 6-, 7- or 8-player tournament at any point and it still finishes with a champion.
+
 ## Edge cases to handle
 
 - Join clicked twice by the same person: ignore
-- Someone leaves mid-tournament: `/tournament cancel` is the v1 answer
+- Someone leaves mid-tournament: `/tournament forfeit` drops them (see Forfeits); `/tournament cancel` is still there to call the whole thing off
 - Report with a non-live player as winner: reject with a clear message
 - `/report` when no tournament or no live match: friendly error
 - Bot restarts mid-tournament: all state is in SQLite, so it resumes
