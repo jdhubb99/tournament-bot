@@ -132,6 +132,13 @@ export function standingsEmbed(title: string): EmbedBuilder {
   return new EmbedBuilder().setColor(GOLD).setTitle(title).setImage(`attachment://${BRACKET_FILE}`);
 }
 
+/** /leaderboard and /stats: a titled embed showing an attached image. */
+export function statsEmbed(title: string, file: string, note?: string): EmbedBuilder {
+  const embed = new EmbedBuilder().setColor(GOLD).setTitle(title).setImage(`attachment://${file}`);
+  if (note) embed.setDescription(note);
+  return embed;
+}
+
 /** /history: one entry per finished tournament, newest first, separated by blank lines. */
 export function historyEmbed(entries: string[]): EmbedBuilder {
   return new EmbedBuilder()
