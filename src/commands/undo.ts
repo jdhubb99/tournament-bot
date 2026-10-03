@@ -1,7 +1,7 @@
-import { SlashCommandBuilder } from "discord.js";
+import { MessageFlags, SlashCommandBuilder } from "discord.js";
 import { currentMatchPost, refreshBracketMessage } from "../announce.ts";
 import { describeSeries } from "../logic/series.ts";
-import { getUndoableTournament, undoLastGame } from "../store.ts";
+import { droppedSinceLastGame, getUndoableTournament, undoLastGame } from "../store.ts";
 import { playerName } from "../views.ts";
 import type { Command } from "./types.ts";
 
@@ -12,6 +12,14 @@ export const undo: Command = {
   async execute(interaction) {
     if (!interaction.inCachedGuild()) return;
     const tournament = getUndoableTournament(interaction.guildId);
+    const dropped = tournament ? droppedSinceLastGame(tournament.id) : null;
+    if (dropped) {
+      await interaction.reply({
+        content: `<@${dropped}> dropped out after the last reported game, and a forfeit can't be undone.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     const outcome = tournament ? undoLastGame(tournament.id) : null;
     if (!outcome) {
       await interaction.reply("There's no reported game to undo.");
@@ -25,6 +33,10 @@ export const undo: Command = {
     if (outcome.reopened) {
       const paused = outcome.paused ? ` ${outcome.paused.label} is back to waiting.` : "";
       lines.push(`${match.label} is live again.${paused}`);
+    }
+    if (outcome.unforfeited.length > 0) {
+      const labels = outcome.unforfeited.map((m) => m.label).join(" and ");
+      lines.push(`It had also decided ${labels} by forfeit, so ${outcome.unforfeited.length > 1 ? "they're" : "that's"} back to waiting.`);
     }
     if (match.best_of > 1) lines.push(describeSeries(series, p1, p2));
 
