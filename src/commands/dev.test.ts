@@ -1,11 +1,17 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { db } from "../db.ts";
 import { createTournament, getOpenTournament, getTournament, listTournamentPlayers } from "../store.ts";
-import { arg, cast, fakeInteraction, resetDb } from "../test/helpers.ts";
+import { arg, cast, fakeInteraction, resetDb, startedTournament, useFakeChannel } from "../test/helpers.ts";
+import { refreshBracketMessage } from "../announce.ts";
 import { dev } from "./dev.ts";
 import { joinSignup } from "./tournament.ts";
 
-beforeEach(resetDb);
+let channel: ReturnType<typeof useFakeChannel>;
+
+beforeEach(() => {
+  resetDb();
+  channel = useFakeChannel();
+});
 
 type OptionUser = { id: string; name: string; memberName?: string };
 
@@ -110,9 +116,15 @@ describe("/dev cancel", () => {
     expect(getTournament(id)?.status).toBe("cancelled");
   });
 
+  it("marks an active tournament's bracket message cancelled", async () => {
+    const id = startedTournament();
+    await refreshBracketMessage(id);
+    await devCancel();
+    expect(arg(channel.sent.get("msg-1")!.edit).embeds[0].toJSON().title).toEndWith("(cancelled)");
+  });
+
   it("cancels an active tournament so a new one can start", async () => {
-    const id = createTournament("guild-1", { semis: 1, final: 3 });
-    db.query("UPDATE tournaments SET status = 'active' WHERE id = $id").run({ id });
+    startedTournament();
     await devCancel();
     expect(getOpenTournament("guild-1")).toBeNull();
   });

@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from "discord.js";
-import { currentMatchPost } from "../announce.ts";
+import { currentMatchPost, refreshBracketMessage } from "../announce.ts";
 import { describeSeries } from "../logic/series.ts";
 import { getUndoableTournament, undoLastGame } from "../store.ts";
 import { playerName } from "../views.ts";
@@ -38,5 +38,6 @@ export const undo: Command = {
       files: [post.file],
       allowedMentions: { parse: [] },
     });
+    await refreshBracketMessage(tournament!.id);
   },
 };

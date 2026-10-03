@@ -5,6 +5,7 @@ import type { StandingRow } from "./logic/roundrobin.ts";
 import { describeSeries, seriesState, type SeriesState } from "./logic/series.ts";
 import { otherTeam, type Team } from "./logic/teams.ts";
 import {
+  bracketEmbed,
   championEmbed,
   standingsEmbed,
   liveMatchEmbed,
@@ -22,8 +23,16 @@ import {
 } from "./render/match-images.ts";
 import { BRACKET_FILE, renderBracketImage, type BracketMatch, type BracketSlot } from "./render/bracket-image.ts";
 import { renderGroupsImage, renderStandingsImage, type UpcomingMatch } from "./render/standings-image.ts";
-import { getTournament, groupStandings, leagueStandings, listGames, listMatches, listTournamentPlayers, type Match } from "./store.ts";
-import { playerName, resultLineFor, runnerUpOf, slotPlaceholder } from "./views.ts";
+import {
+  getTournament,
+  groupStandings,
+  leagueStandings,
+  listGames, listMatches,
+  listTournamentPlayers,
+  setBracketMessage,
+  type Match,
+} from "./store.ts";
+import { FORMAT_NAMES, liveLineFor, playerName, resultLineFor, runnerUpOf, slotPlaceholder } from "./views.ts";
 
 // Static PNGs so animated avatars and webp still render in the versus image.
 const AVATAR_OPTIONS = { extension: "png", forceStatic: true, size: 256 } as const;
@@ -269,4 +278,46 @@ export async function announceStageFinished(tournamentId: number): Promise<void>
     files: [await bracketImage(tournamentId)],
     allowedMentions: { parse: [] },
   });
+}
+
+/** The /bracket post for a started tournament: its title, the live match as text, and the bracket image. */
+export async function bracketPost(tournamentId: number): Promise<Post> {
+  const tournament = getTournament(tournamentId)!;
+  const players = listTournamentPlayers(tournamentId).length;
+  const live = listMatches(tournamentId).find((m) => m.status === "live");
+  const suffix = tournament.status === "done" ? " (finished)" : tournament.status === "cancelled" ? " (cancelled)" : "";
+  return {
+    embed: bracketEmbed({
+      title: `${tournament.game} 1v1 — ${FORMAT_NAMES[tournament.format]}, ${players} players${suffix}`,
+      live: live ? liveLineFor(live) : null,
+    }),
+    file: await bracketImage(tournamentId),
+  };
+}
+
+/** Posts the live bracket message and remembers it, so later updates edit it in place. */
+async function postBracketMessage(tournamentId: number, post: Post): Promise<void> {
+  const message = await tournamentChannel().send({ embeds: [post.embed], files: [post.file] });
+  setBracketMessage(tournamentId, message.id);
+}
+
+/**
+ * Brings the tournament's live bracket message up to date by editing it in place, posting
+ * it first if there isn't one yet (or it was deleted). Called when a tournament starts and
+ * after every report, undo and cancel. Never throws: a stale bracket mustn't fail a report.
+ */
+export async function refreshBracketMessage(tournamentId: number): Promise<void> {
+  try {
+    const post = await bracketPost(tournamentId);
+    const messageId = getTournament(tournamentId)!.bracket_msg_id;
+    const message = messageId ? await tournamentChannel().messages.fetch(messageId).catch(() => null) : null;
+    if (message) {
+      // `attachments: []` drops the old image so the new one replaces it.
+      await message.edit({ embeds: [post.embed], files: [post.file], attachments: [] });
+    } else {
+      await postBracketMessage(tournamentId, post);
+    }
+  } catch (err) {
+    console.error(`Couldn't update the bracket message for tournament ${tournamentId}:`, err);
+  }
 }

@@ -72,6 +72,7 @@ Once a piece of work (for example a phase) is finished, commit it and open a PR:
 - Each `/report` records one game. Series state is always derived from the `games` rows (wins needed = `floor(best_of/2)+1`) and is never stored separately.
 - The format depends only on player count (`formatFor()` in `logic/format.ts`: 4 and 8 are single elim, 5 is round robin plus a final, 6–7 are groups then semis then final). See the table in SPEC.md.
 - The bot never creates or manages channels. Every tournament command runs in, and posts to, `TOURNAMENT_CHANNEL_ID`. Commands used anywhere else get an ephemeral redirect.
+- **Keep the live bracket current.** Anything that changes a started tournament (report, undo, cancel) must call `refreshBracketMessage()`, which edits the message saved in `bracket_msg_id`, or reposts it if that message is gone. It never throws, so call it after the reply.
 - **Embed pictures are uploaded, never linked.** Render them in `src/render/match-images.ts`, attach them as files, and reference them with `attachment://<name>`. Discord didn't show avatar URLs used as embed thumbnails.
 - Gateway intents are `Guilds` only.
 - `bun:sqlite` named parameters need a prefix (`$id`). Positional `?` also works.

@@ -7,7 +7,7 @@ import {
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from "discord.js";
-import { announceLiveMatch } from "../announce.ts";
+import { announceLiveMatch, refreshBracketMessage } from "../announce.ts";
 import { tournamentChannel } from "../channel.ts";
 import { singleElim } from "../logic/bracket.ts";
 import { formatFor, MAX_PLAYERS, MIN_PLAYERS } from "../logic/format.ts";
@@ -106,6 +106,8 @@ async function begin(interaction: ButtonInteraction<"cached">, tournament: Tourn
   }
 
   await interaction.update(signupMessage(tournament, true));
+  // The live bracket first, so the "Up next" ping is the newest message.
+  await refreshBracketMessage(tournament.id);
   await announceLiveMatch(getLiveMatch(tournament.id)!);
 }
 
@@ -138,6 +140,7 @@ async function confirmCancel(interaction: ButtonInteraction<"cached">, found: To
   }
   cancelTournament(found.id);
   await interaction.update({ content: "Cancelled.", components: [] });
+  if (found.status === "active") await refreshBracketMessage(found.id);
   await tournamentChannel().send({
     content: `🛑 The tournament was cancelled by <@${interaction.user.id}>. Run \`/tournament start\` to begin a new one.`,
     allowedMentions: { parse: [] },

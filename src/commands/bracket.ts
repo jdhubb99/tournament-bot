@@ -1,8 +1,6 @@
 import { SlashCommandBuilder } from "discord.js";
-import { bracketImage } from "../announce.ts";
-import { bracketEmbed } from "../render/embeds.ts";
-import { getOpenTournament, listFinishedTournaments, listMatches, listTournamentPlayers } from "../store.ts";
-import { FORMAT_NAMES, liveLineFor } from "../views.ts";
+import { bracketPost } from "../announce.ts";
+import { getOpenTournament, listFinishedTournaments, listTournamentPlayers } from "../store.ts";
 import type { Command } from "./types.ts";
 
 export const bracket: Command = {
@@ -25,12 +23,7 @@ export const bracket: Command = {
 
     // Avatar downloads and rendering can take a moment.
     await interaction.deferReply();
-    const live = listMatches(tournament.id).find((m) => m.status === "live");
-    const finished = tournament.status === "done" ? " (finished)" : "";
-    const embed = bracketEmbed({
-      title: `${tournament.game} 1v1 — ${FORMAT_NAMES[tournament.format]}, ${playerCount} players${finished}`,
-      live: live ? liveLineFor(live) : null,
-    });
-    await interaction.editReply({ embeds: [embed], files: [await bracketImage(tournament.id)] });
+    const { embed, file } = await bracketPost(tournament.id);
+    await interaction.editReply({ embeds: [embed], files: [file] });
   },
 };

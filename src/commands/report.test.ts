@@ -2,7 +2,16 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { useTournamentChannel } from "../channel.ts";
 import { db } from "../db.ts";
 import { createTournament, getLiveMatch, getTournament, listGames } from "../store.ts";
-import { arg, cast, fakeChannel, fakeInteraction, resetDb, startedRoundRobin, startedTournament } from "../test/helpers.ts";
+import {
+  arg,
+  cast,
+  fakeChannel,
+  fakeInteraction,
+  resetDb,
+  sentStartingWith,
+  startedRoundRobin,
+  startedTournament,
+} from "../test/helpers.ts";
 import { report } from "./report.ts";
 
 let channel: ReturnType<typeof fakeChannel>;
@@ -74,7 +83,8 @@ describe("/report results", () => {
     expect(message.files.map((f: { name: string }) => f.name)).toEqual(["scoreboard.png"]);
     expect(message.allowedMentions).toEqual({ parse: [] });
     expect(listGames(getLiveMatch(id)!.id)[0]).toMatchObject({ p1_score: 2, p2_score: 4, reported_by: "ref" });
-    expect(channel.send).not.toHaveBeenCalled();
+    // Only the live bracket message gets posted; nothing else happens mid-series.
+    expect(channel.send.mock.calls.map((c) => (c[0] as { files: { name: string }[] }).files[0]!.name)).toEqual(["bracket.png"]);
   });
 
   it("closes a best of 1 with the result embed, no series line, and announces the next match", async () => {
@@ -88,7 +98,7 @@ describe("/report results", () => {
     expect(embed.fields).toEqual([{ name: "Final score", value: "**user-a** 3 – 0 user-b" }]);
     expect(embed.thumbnail.url).toBe("attachment://winner.png");
     expect(message.files.map((f: { name: string }) => f.name)).toEqual(["winner.png"]);
-    expect(arg(channel.send).content).toBe("Up next: <@c> vs <@d> (Bo1)");
+    expect(sentStartingWith(channel, "Up next: ").map((m) => m.content)).toEqual(["Up next: <@c> vs <@d> (Bo1)"]);
   });
 
   it("plays a full 4-player tournament end to end", async () => {
@@ -102,12 +112,15 @@ describe("/report results", () => {
     const last = await send("d", 4, 3);
 
     expect(arg(last.editReply).content).toBe("Game 3 · Final: A 3 – 4 **D**");
-    const posts = channel.send.mock.calls.map((c) => (c[0] as { content: string }).content);
+    const posts = channel.send.mock.calls.map((c) => (c[0] as { content?: string }).content).filter(Boolean);
     expect(posts).toEqual([
       "Up next: <@c> vs <@d> (Bo1)",
       "Up next: <@a> vs <@d> (Bo3)",
       "🏆 <@d> wins the tournament!",
     ]);
+    // One bracket message, posted on the first report and then edited after every other one.
+    const bracketMessage = channel.sent.get(getTournament(id)!.bracket_msg_id!)!;
+    expect(bracketMessage.edit).toHaveBeenCalledTimes(4);
     expect(getTournament(id)).toMatchObject({ status: "done", winner_id: "d" });
     expect(errorOf(await send("d", 1, 0))).toBe("There's no live match to report right now.");
   });

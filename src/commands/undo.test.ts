@@ -54,6 +54,13 @@ describe("/undo", () => {
     expect(live(id).label).toBe("Semifinal 1");
   });
 
+  it("updates the live bracket message", async () => {
+    const id = startedTournament();
+    recordGame(live(id), 3, 1, "r", "goons");
+    await run();
+    expect(getTournament(id)?.bracket_msg_id).not.toBeNull();
+  });
+
   it("reopens a finished tournament", async () => {
     const id = startedTournament({ semis: 1, final: 1 });
     recordGame(live(id), 1, 0, "r", "goons");
