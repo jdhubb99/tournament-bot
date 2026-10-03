@@ -1,6 +1,7 @@
 import { MessageFlags, SlashCommandBuilder } from "discord.js";
 import {
   announceChampion,
+  announceForfeits,
   announceLiveMatch,
   announceStageFinished,
   matchResult,
@@ -76,6 +77,7 @@ export const report: Command = {
 
     await refreshBracketMessage(match.tournament_id);
     if (outcome.stageFinished) await announceStageFinished(match.tournament_id);
+    await announceForfeits(outcome.forfeits);
     if (outcome.next) await announceLiveMatch(outcome.next);
     if (outcome.championId) await announceChampion(match.tournament_id, outcome.championId);
   },

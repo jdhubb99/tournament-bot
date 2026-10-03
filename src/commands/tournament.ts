@@ -7,9 +7,10 @@ import {
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from "discord.js";
-import { announceLiveMatch, refreshBracketMessage } from "../announce.ts";
+import { announceChampion, announceLiveMatch, announceStageFinished, refreshBracketMessage } from "../announce.ts";
 import { tournamentChannel } from "../channel.ts";
 import { singleElim, type SeriesLengths } from "../logic/bracket.ts";
+import { isOut } from "../logic/forfeit.ts";
 import { formatFor, MAX_PLAYERS, MIN_PLAYERS } from "../logic/format.ts";
 import { groupsPlan } from "../logic/groups.ts";
 import { shuffle } from "../logic/random.ts";
@@ -22,6 +23,8 @@ import {
   cancelTournament,
   changeSeriesLengths,
   createTournament,
+  droppedPlayers,
+  forfeitPlayer,
   getLiveMatch,
   getOpenTournament,
   getTournament,
@@ -32,6 +35,7 @@ import {
   upsertPlayer,
   type Tournament,
 } from "../store.ts";
+import { resultLineFor } from "../views.ts";
 import type { Command } from "./types.ts";
 
 const SERIES_CHOICES = [1, 3, 5].map((n) => ({ name: `Best of ${n}`, value: n }));
@@ -175,6 +179,68 @@ async function changeLengths(interaction: ChatInputCommandInteraction<"cached">)
   if (open.status === "active") await refreshBracketMessage(open.id);
 }
 
+/** Why a player can't be dropped from the tournament right now, or null if they can. */
+function forfeitProblem(found: Tournament | null, playerId: string): string | null {
+  if (!found || (found.status !== "signup" && found.status !== "active")) return "No tournament is running.";
+  if (found.status === "signup") return "The tournament hasn't started yet, so there's nothing to forfeit.";
+  if (!listTournamentPlayers(found.id).some((p) => p.discord_id === playerId)) return `<@${playerId}> isn't in this tournament.`;
+  if (droppedPlayers(found.id).has(playerId)) return `<@${playerId}> has already dropped out.`;
+  if (isOut(playerId, listMatches(found.id), found.format)) return `<@${playerId}> is already out of the tournament.`;
+  return null;
+}
+
+/** Asks privately before dropping a player, since a forfeit can't be undone. */
+async function askToForfeit(interaction: ChatInputCommandInteraction<"cached">) {
+  const open = getOpenTournament(interaction.guildId);
+  const playerId = interaction.options.getUser("player", true).id;
+  const problem = forfeitProblem(open, playerId);
+  if (problem) {
+    await interaction.reply(ephemeral(problem));
+    return;
+  }
+  const live = getLiveMatch(open!.id)!;
+  const opponent = live.p1_id === playerId ? live.p2_id : live.p2_id === playerId ? live.p1_id : null;
+  const now = opponent ? ` They're in the live match (${live.label}), so <@${opponent}> wins it now.` : "";
+  const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`tournament:forfeit:${open!.id}:${playerId}`).setLabel("Drop them").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`tournament:stay:${open!.id}:${playerId}`).setLabel("Keep them in").setStyle(ButtonStyle.Secondary),
+  );
+  await interaction.reply({
+    content: `Drop <@${playerId}> from the tournament? They forfeit every match they have left.${now} This can't be undone.`,
+    components: [buttons],
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+/** Handles the private confirmation from /tournament forfeit, then posts the forfeit and what it set off. */
+async function confirmForfeit(
+  interaction: ButtonInteraction<"cached">,
+  found: Tournament | null,
+  playerId: string,
+  confirmed: boolean,
+) {
+  if (!confirmed) {
+    await interaction.update({ content: `Okay, <@${playerId}> stays in.`, components: [] });
+    return;
+  }
+  // Checked again: the tournament may have moved on since the question was asked.
+  const problem = forfeitProblem(found, playerId);
+  if (problem) {
+    await interaction.update({ content: problem, components: [] });
+    return;
+  }
+  const tournamentId = found!.id;
+  const outcome = forfeitPlayer(tournamentId, playerId, randomTeam());
+  await interaction.update({ content: "Dropped.", components: [] });
+
+  const lines = [`🏳️ <@${playerId}> dropped out of the tournament (by <@${interaction.user.id}>).`, ...outcome.forfeits.map(resultLineFor)];
+  await tournamentChannel().send({ content: lines.join("\n"), allowedMentions: { parse: [] } });
+  await refreshBracketMessage(tournamentId);
+  if (outcome.stageFinished) await announceStageFinished(tournamentId);
+  if (outcome.next) await announceLiveMatch(outcome.next);
+  if (outcome.championId) await announceChampion(tournamentId, outcome.championId);
+}
+
 async function askToCancel(interaction: ChatInputCommandInteraction<"cached">) {
   const open = getOpenTournament(interaction.guildId);
   if (!open) {
@@ -229,6 +295,12 @@ export const tournament: Command = {
         .addIntegerOption((o) => o.setName("semis").setDescription("New semifinal series length").addChoices(...SERIES_CHOICES))
         .addIntegerOption((o) => o.setName("final").setDescription("New final series length").addChoices(...SERIES_CHOICES)),
     )
+    .addSubcommand((sub) =>
+      sub
+        .setName("forfeit")
+        .setDescription("Drop a player from the current tournament: they forfeit every match they have left")
+        .addUserOption((o) => o.setName("player").setDescription("The player who's leaving").setRequired(true)),
+    )
     .addSubcommand((sub) => sub.setName("cancel").setDescription("Cancel the current tournament")),
   tournamentOnly: true,
 
@@ -239,15 +311,18 @@ export const tournament: Command = {
         return start(interaction);
       case "series":
         return changeLengths(interaction);
+      case "forfeit":
+        return askToForfeit(interaction);
       case "cancel":
         return askToCancel(interaction);
     }
   },
 
-  async button(interaction, [action, idArg]) {
+  async button(interaction, [action, idArg, playerId]) {
     if (!interaction.inCachedGuild()) return;
     const found = getTournament(Number(idArg));
     if (action === "cancel" || action === "keep") return confirmCancel(interaction, found, action === "cancel");
+    if (action === "forfeit" || action === "stay") return confirmForfeit(interaction, found, playerId!, action === "forfeit");
     if (!found || found.status !== "signup") {
       await interaction.reply(ephemeral("Signup for this tournament is closed."));
       return;

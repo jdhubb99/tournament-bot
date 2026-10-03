@@ -28,6 +28,8 @@ import { toPng } from "./match-images.ts";
 export interface StandingsImageRow {
   name: string;
   avatar: Uint8Array | null;
+  /** Dropped out with /tournament forfeit: the name is dimmed. */
+  dropped: boolean;
   played: number;
   wins: number;
   losses: number;
@@ -89,7 +91,7 @@ const NOTHING_UP_NEXT: UpNext = { matches: [], more: 0 };
  * `highlight.colors` (rank, a bar on the left, and the avatar ring), one color per row,
  * with a line in the last color below them if `highlight.cutoff`. Returns the SVG and its height.
  */
-export function layoutTable<T extends { name: string; avatar: Uint8Array | null }>(
+export function layoutTable<T extends { name: string; avatar: Uint8Array | null; dropped?: boolean }>(
   x: number,
   top: number,
   title: string,
@@ -116,7 +118,7 @@ export function layoutTable<T extends { name: string; avatar: Uint8Array | null 
     if (color) parts.push(`<rect x="${x}" y="${y + 8}" width="5" height="${ROW_H - 16}" rx="2" fill="${color}"/>`);
     if (ranked) parts.push(text(x + 30, mid + 9, String(i + 1), { size: 26, fill: color ?? MUTED, anchor: "middle" }));
     parts.push(avatarCircle(`${id}${i}`, x + 72, mid, 16, row.avatar, color ?? DIM, 3));
-    parts.push(text(x + 100, mid + 9, truncate(row.name, 16), { size: 26, fill: TEXT }));
+    parts.push(text(x + 100, mid + 9, truncate(row.name, 16), { size: 26, fill: row.dropped ? DIM : TEXT }));
     for (const column of columns) parts.push(text(x + column.x, mid + 9, column.value(row), { size: 26, fill: TEXT, anchor: "middle" }));
   });
   return { svg: parts.join(""), height: HEADER_H + rows.length * ROW_H };

@@ -47,6 +47,27 @@ describe("migrations", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("adds dropped_after_game to a tournament_players table created before forfeits existed", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tournament-bot-"));
+    const path = join(dir, "old.db");
+    try {
+      const old = new Database(path);
+      old.exec(`CREATE TABLE tournament_players (
+        tournament_id INTEGER NOT NULL, player_id TEXT NOT NULL, seed INTEGER, group_label TEXT,
+        PRIMARY KEY (tournament_id, player_id))`);
+      old.exec("INSERT INTO tournament_players (tournament_id, player_id, seed) VALUES (1, 'a', 1)");
+      old.close();
+
+      const db = openDb(path);
+      expect(db.query("SELECT player_id, dropped_after_game FROM tournament_players").all()).toEqual([
+        { player_id: "a", dropped_after_game: null },
+      ]);
+      db.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("dbPath", () => {
