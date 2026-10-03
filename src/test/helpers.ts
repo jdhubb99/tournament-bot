@@ -3,8 +3,18 @@ import { ChannelType } from "discord.js";
 import { useTournamentChannel } from "../channel.ts";
 import { db } from "../db.ts";
 import { singleElim } from "../logic/bracket.ts";
+import { groupsPlan } from "../logic/groups.ts";
 import { roundRobinPlan } from "../logic/roundrobin.ts";
-import { addTournamentPlayer, createTournament, getLiveMatch, recordGame, startTournament, upsertPlayer, type GameOutcome } from "../store.ts";
+import {
+  addTournamentPlayer,
+  createTournament,
+  getLiveMatch,
+  getTournament,
+  recordGame,
+  startTournament,
+  upsertPlayer,
+  type GameOutcome,
+} from "../store.ts";
 
 /** Casts a hand-built fake to the discord.js type a function expects. */
 export function cast<T>(fake: unknown): T {
@@ -154,4 +164,49 @@ export function playLeagueMatch(id: number): GameOutcome {
 export function playLeague(id: number): GameOutcome {
   for (let i = 0; i < 9; i++) playLeagueMatch(id);
   return playLeagueMatch(id);
+}
+
+const LETTERS = ["a", "b", "c", "d", "e", "f", "g", "h"];
+
+function signedUp(count: number, lengths: { semis: number; final: number }): { id: number; seeded: string[] } {
+  const id = createTournament("guild-1", lengths);
+  const seeded = LETTERS.slice(0, count);
+  for (const p of seeded) {
+    upsertPlayer(p, p.toUpperCase());
+    addTournamentPlayer(id, p);
+  }
+  return { id, seeded };
+}
+
+/**
+ * An active groups tournament with 6 or 7 players a–g seeded in order, so Group A is
+ * a–c (or a–d) and Group B the rest. The first group match is live.
+ */
+export function startedGroups(count: 6 | 7, lengths = { semis: 1, final: 3 }): number {
+  const { id, seeded } = signedUp(count, lengths);
+  const { plan, groups } = groupsPlan(seeded, lengths);
+  startTournament(id, "groups", seeded, plan, "goons", groups);
+  return id;
+}
+
+/** An active 8-player knockout with players a–h seeded in order. Quarterfinal 1 is live. */
+export function startedEight(lengths = { semis: 1, final: 3 }): number {
+  const { id, seeded } = signedUp(8, lengths);
+  startTournament(id, "single_elim", seeded, singleElim(seeded, lengths), "goons");
+  return id;
+}
+
+/**
+ * Plays every remaining game with the alphabetically earlier player winning 2–1, until the
+ * tournament is done. Returns how many games were reported.
+ */
+export function playToTheEnd(id: number): number {
+  let games = 0;
+  while (getTournament(id)!.status === "active") {
+    const match = getLiveMatch(id)!;
+    const p1Wins = match.p1_id! < match.p2_id!;
+    recordGame(match, p1Wins ? 2 : 1, p1Wins ? 1 : 2, "r", "goons");
+    games++;
+  }
+  return games;
 }

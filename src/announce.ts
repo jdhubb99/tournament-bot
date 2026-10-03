@@ -1,11 +1,12 @@
 import { AttachmentBuilder, type EmbedBuilder } from "discord.js";
 import { tournamentChannel } from "./channel.ts";
 import { env } from "./env.ts";
+import type { StandingRow } from "./logic/roundrobin.ts";
 import { describeSeries, seriesState, type SeriesState } from "./logic/series.ts";
 import { otherTeam, type Team } from "./logic/teams.ts";
 import {
   championEmbed,
-  leagueTableEmbed,
+  standingsEmbed,
   liveMatchEmbed,
   matchResultEmbed,
   seriesUpdateEmbed,
@@ -20,8 +21,8 @@ import {
   WINNER_FILE,
 } from "./render/match-images.ts";
 import { BRACKET_FILE, renderBracketImage, type BracketMatch, type BracketSlot } from "./render/bracket-image.ts";
-import { renderStandingsImage, type UpcomingMatch } from "./render/standings-image.ts";
-import { getTournament, leagueStandings, listGames, listMatches, listTournamentPlayers, type Match } from "./store.ts";
+import { renderGroupsImage, renderStandingsImage, type UpcomingMatch } from "./render/standings-image.ts";
+import { getTournament, groupStandings, leagueStandings, listGames, listMatches, listTournamentPlayers, type Match } from "./store.ts";
 import { playerName, resultLineFor, runnerUpOf, slotPlaceholder } from "./views.ts";
 
 // Static PNGs so animated avatars and webp still render in the versus image.
@@ -142,15 +143,29 @@ export async function announceChampion(tournamentId: number, championId: string)
   });
 }
 
+/** Where an empty playoff slot's player will come from, for the formats that fill playoffs from standings. */
+const STANDINGS_PLACEHOLDERS: Record<string, { p1: string; p2: string }> = {
+  "round_robin:Final": { p1: "League 1st place", p2: "League 2nd place" },
+  "groups:Semifinal 1": { p1: "Group A 1st", p2: "Group B 2nd" },
+  "groups:Semifinal 2": { p1: "Group B 1st", p2: "Group A 2nd" },
+};
+
+/** The group finish shown beside each group semifinal slot, in place of a seed. */
+const GROUP_TAGS: Record<string, { p1: string; p2: string }> = {
+  "Semifinal 1": { p1: "A1", p2: "B2" },
+  "Semifinal 2": { p1: "B1", p2: "A2" },
+};
+
 /**
- * The /bracket image, with every known player's avatar: the bracket for single elim, or
- * the league table beside the final for round robin.
+ * The /bracket image, with every known player's avatar: the bracket for single elim, the
+ * league table beside the final for round robin, or both group tables beside the playoff
+ * bracket for groups.
  */
 export async function bracketImage(tournamentId: number): Promise<AttachmentBuilder> {
   const tournament = getTournament(tournamentId)!;
+  const { format } = tournament;
   const matches = listMatches(tournamentId);
   const seeds = new Map(listTournamentPlayers(tournamentId).map((p, i) => [p.discord_id, i + 1]));
-  const roundRobin = tournament.format === "round_robin";
 
   // Everyone in the tournament (the champion is among them).
   const ids = [...seeds.keys()];
@@ -171,14 +186,15 @@ export async function bracketImage(tournamentId: number): Promise<AttachmentBuil
           : side === "p1"
             ? series.p1Wins
             : series.p2Wins;
-    // A round-robin final is filled from the table, not from earlier matches.
-    const placeholder = roundRobin ? `League ${side === "p1" ? "1st" : "2nd"} place` : slotPlaceholder(match, matches, side);
+    // Playoffs filled from standings say where their players come from; the rest name the feeder match.
+    const placeholder = STANDINGS_PLACEHOLDERS[`${format}:${match.label}`]?.[side] ?? slotPlaceholder(match, matches, side);
+    const seed = format === "groups" ? (GROUP_TAGS[match.label]?.[side] ?? null) : id ? (seeds.get(id) ?? null) : null;
     return {
       name: id ? playerName(id) : null,
       placeholder,
       avatar: id ? (avatars.get(id) ?? null) : null,
       team: id && match.p1_team ? teamIn(match, id) : null,
-      seed: id ? (seeds.get(id) ?? null) : null,
+      seed,
       score,
       won: id !== null && match.winner_id === id,
     };
@@ -187,32 +203,36 @@ export async function bracketImage(tournamentId: number): Promise<AttachmentBuil
   const champion = tournament.winner_id
     ? { name: playerName(tournament.winner_id), avatar: avatars.get(tournament.winner_id) ?? null }
     : null;
+  const tableRows = (rows: StandingRow[]) =>
+    rows.map((row) => ({
+      name: playerName(row.playerId),
+      avatar: avatars.get(row.playerId) ?? null,
+      played: row.played,
+      wins: row.wins,
+      losses: row.losses,
+      goalsFor: row.goalsFor,
+      goalsAgainst: row.goalsAgainst,
+    }));
 
-  const png = roundRobin
-    ? renderStandingsImage(
-        leagueStandings(tournamentId).map((row) => ({
-          name: playerName(row.playerId),
-          avatar: avatars.get(row.playerId) ?? null,
-          played: row.played,
-          wins: row.wins,
-          losses: row.losses,
-          goalsFor: row.goalsFor,
-          goalsAgainst: row.goalsAgainst,
-        })),
-        card(matches.at(-1)!),
-        champion,
-        upNextInLeague(matches),
-      )
-    : renderBracketImage(matches.map(card), champion);
+  let png: Uint8Array;
+  if (format === "round_robin") {
+    png = renderStandingsImage(tableRows(leagueStandings(tournamentId)), card(matches.at(-1)!), champion, upNextInStage(matches));
+  } else if (format === "groups") {
+    const tables = groupStandings(tournamentId);
+    const playoffs = matches.filter((m) => m.round > 1).map(card);
+    png = renderGroupsImage({ A: tableRows(tables.A), B: tableRows(tables.B) }, playoffs, champion, upNextInStage(matches));
+  } else {
+    png = renderBracketImage(matches.map(card), champion);
+  }
   return new AttachmentBuilder(Buffer.from(png), { name: BRACKET_FILE });
 }
 
-/** How many upcoming league matches the standings image lists before "+N more". */
+/** How many upcoming league or group matches the image lists before "+N more". */
 const UP_NEXT_SHOWN = 4;
 
-/** The live league match and the next ones in play order, for the standings image. */
-function upNextInLeague(matches: readonly Match[]): { matches: UpcomingMatch[]; more: number } {
-  const remaining = matches.slice(0, -1).filter((m) => m.status !== "done");
+/** The live league or group match and the next ones in play order, for the standings images. */
+function upNextInStage(matches: readonly Match[]): { matches: UpcomingMatch[]; more: number } {
+  const remaining = matches.filter((m) => m.round === 1 && m.status !== "done");
   return {
     matches: remaining.slice(0, UP_NEXT_SHOWN).map((m) => ({
       label: m.label,
@@ -224,12 +244,26 @@ function upNextInLeague(matches: readonly Match[]): { matches: UpcomingMatch[]; 
   };
 }
 
-/** Round robin: when the league ends, posts the final table and who goes to the final. */
-export async function announceLeagueFinished(tournamentId: number): Promise<void> {
-  const [first, second] = leagueStandings(tournamentId);
+/**
+ * When a round-robin league or a group stage ends, posts the final table(s) and who moves on:
+ * the top 2 to the final, or the four semifinalists.
+ */
+export async function announceStageFinished(tournamentId: number): Promise<void> {
+  const name = (row: StandingRow | undefined) => `**${playerName(row!.playerId)}**`;
+  let content: string;
+  let title: string;
+  if (getTournament(tournamentId)!.format === "groups") {
+    const { A, B } = groupStandings(tournamentId);
+    content = `📊 The group stage is done! Semifinal 1: ${name(A[0])} vs ${name(B[1])} · Semifinal 2: ${name(B[0])} vs ${name(A[1])}`;
+    title = "Final group tables";
+  } else {
+    const [first, second] = leagueStandings(tournamentId);
+    content = `📊 The league is done! ${name(first)} and ${name(second)} go to the final.`;
+    title = "Final league table";
+  }
   await tournamentChannel().send({
-    content: `📊 The league is done! **${playerName(first!.playerId)}** and **${playerName(second!.playerId)}** go to the final.`,
-    embeds: [leagueTableEmbed()],
+    content,
+    embeds: [standingsEmbed(title)],
     files: [await bracketImage(tournamentId)],
     allowedMentions: { parse: [] },
   });

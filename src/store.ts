@@ -2,13 +2,15 @@
 // interleaving with other interactions; multi-step writes use transactions.
 import { db } from "./db.ts";
 import type { PlannedMatch, SeriesLengths } from "./logic/bracket.ts";
+import type { Format } from "./logic/format.ts";
+import { semifinalPairs, type GroupLabel } from "./logic/groups.ts";
 import { allMatchesDone, nextMatchToPlay } from "./logic/queue.ts";
 import { standings, type StandingRow } from "./logic/roundrobin.ts";
 import { seriesState, type SeriesState } from "./logic/series.ts";
 import type { Team } from "./logic/teams.ts";
 
 export type TournamentStatus = "signup" | "active" | "done" | "cancelled";
-export type Format = "single_elim" | "round_robin" | "groups";
+export type { Format } from "./logic/format.ts";
 
 export interface Tournament {
   id: number;
@@ -101,9 +103,18 @@ export function listTournamentPlayers(tournamentId: number): Player[] {
  * players included), links advancement, and makes the first match live with p1 on `firstP1Team`.
  */
 export const startTournament = db.transaction(
-  (tournamentId: number, format: Format, seeded: string[], plan: PlannedMatch[], firstP1Team: Team): void => {
-    const setSeed = db.query("UPDATE tournament_players SET seed = $seed WHERE tournament_id = $t AND player_id = $p");
-    seeded.forEach((playerId, i) => setSeed.run({ seed: i + 1, t: tournamentId, p: playerId }));
+  (
+    tournamentId: number,
+    format: Format,
+    seeded: string[],
+    plan: PlannedMatch[],
+    firstP1Team: Team,
+    groups: Record<string, GroupLabel> = {},
+  ): void => {
+    const setSeed = db.query(
+      "UPDATE tournament_players SET seed = $seed, group_label = $group WHERE tournament_id = $t AND player_id = $p",
+    );
+    seeded.forEach((playerId, i) => setSeed.run({ seed: i + 1, group: groups[playerId] ?? null, t: tournamentId, p: playerId }));
 
     const insert = db.query(
       `INSERT INTO matches (tournament_id, round, play_order, label, p1_id, p2_id, best_of, status)
@@ -190,8 +201,11 @@ export interface GameOutcome {
   next: Match | null;
   /** Set when this game decided the final match of the tournament. */
   championId: string | null;
-  /** True when this game finished a round-robin league, so the final was just filled from the standings. */
-  leagueFinished: boolean;
+  /**
+   * True when this game finished a round-robin league or a group stage, so the playoffs
+   * were just filled from the standings (the final, or both semis).
+   */
+  stageFinished: boolean;
 }
 
 /**
@@ -215,7 +229,7 @@ export const recordGame = db.transaction(
 
     let next: Match | null = null;
     let championId: string | null = null;
-    let leagueFinished = false;
+    let stageFinished = false;
     if (series.winner) {
       const winnerId = series.winner === "p1" ? match.p1_id! : match.p2_id!;
       db.query("UPDATE matches SET status = 'done', winner_id = $w WHERE id = $id").run({ w: winnerId, id: match.id });
@@ -224,7 +238,7 @@ export const recordGame = db.transaction(
         db.query(`UPDATE matches SET ${column} = $w WHERE id = $id`).run({ w: winnerId, id: match.next_match_id });
       }
 
-      leagueFinished = fillLeagueFinal(match.tournament_id);
+      stageFinished = fillPlayoffsFromStandings(match.tournament_id);
       const matches = listMatches(match.tournament_id);
       const upNext = nextMatchToPlay(matches);
       if (upNext) {
@@ -238,7 +252,7 @@ export const recordGame = db.transaction(
       }
     }
 
-    return { game, match: getMatch(match.id)!, series, next, championId, leagueFinished };
+    return { game, match: getMatch(match.id)!, series, next, championId, stageFinished };
   },
 );
 
@@ -303,11 +317,12 @@ export const undoLastGame = db.transaction((tournamentId: number): UndoOutcome |
       const column = match.next_slot === "p1" ? "p1_id" : "p2_id";
       db.query(`UPDATE matches SET ${column} = NULL WHERE id = $id`).run({ id: match.next_match_id });
     }
-    // In a round robin the final was filled from the standings when the league ended;
-    // reopening a league match means the league isn't over, so empty the final again.
-    const final = listMatches(tournamentId).at(-1)!;
-    if (getTournament(tournamentId)!.format === "round_robin" && match.id !== final.id) {
-      db.query("UPDATE matches SET p1_id = NULL, p2_id = NULL WHERE id = $id").run({ id: final.id });
+    // Reopening a league or group match means that stage isn't over, so empty the playoffs
+    // it had filled from the standings (the round-robin final, or both semis).
+    if (match.round === 1) {
+      for (const playoff of standingsFilledMatches(tournamentId)) {
+        db.query("UPDATE matches SET p1_id = NULL, p2_id = NULL WHERE id = $id").run({ id: playoff.id });
+      }
     }
     db.query("UPDATE matches SET status = 'live', winner_id = NULL WHERE id = $id").run({ id: match.id });
 
@@ -351,30 +366,63 @@ export function titlesUpTo(guildId: string, playerId: string, tournamentId: numb
     .get({ g: guildId, p: playerId, t: tournamentId })!.n;
 }
 
-/** The round-robin league table, from every decided league match (all matches but the final). */
-export function leagueStandings(tournamentId: number): StandingRow[] {
-  const seeded = listTournamentPlayers(tournamentId).map((p) => p.discord_id);
-  const results = listMatches(tournamentId)
-    .slice(0, -1)
-    .filter((m) => m.status === "done")
+/** The league (round robin) or group (groups) matches: round 1 of those formats. */
+function stageMatches(tournamentId: number): Match[] {
+  return listMatches(tournamentId).filter((m) => m.round === 1);
+}
+
+/** Playoff matches whose players come from the standings: the round-robin final, or the group semis. */
+function standingsFilledMatches(tournamentId: number): Match[] {
+  const format = getTournament(tournamentId)!.format;
+  const matches = listMatches(tournamentId);
+  if (format === "round_robin") return matches.slice(-1);
+  if (format === "groups") return matches.filter((m) => m.label.startsWith("Semifinal"));
+  return [];
+}
+
+/** The table for some players, from every decided stage match between them. Players are in seed order. */
+function tableFor(tournamentId: number, players: readonly string[]): StandingRow[] {
+  const inTable = new Set(players);
+  const results = stageMatches(tournamentId)
+    .filter((m) => m.status === "done" && inTable.has(m.p1_id!) && inTable.has(m.p2_id!))
     .map((m) => ({ p1: m.p1_id!, p2: m.p2_id!, winner: m.winner_id!, games: listGames(m.id) }));
-  return standings(seeded, results);
+  return standings(players, results);
+}
+
+/** The round-robin league table, from every decided league match. */
+export function leagueStandings(tournamentId: number): StandingRow[] {
+  return tableFor(tournamentId, listTournamentPlayers(tournamentId).map((p) => p.discord_id));
+}
+
+/** Both group tables, from every decided group match. */
+export function groupStandings(tournamentId: number): Record<GroupLabel, StandingRow[]> {
+  const members = (label: GroupLabel) =>
+    db
+      .query<{ player_id: string }, { t: number; g: string }>(
+        "SELECT player_id FROM tournament_players WHERE tournament_id = $t AND group_label = $g ORDER BY seed",
+      )
+      .all({ t: tournamentId, g: label })
+      .map((r) => r.player_id);
+  return { A: tableFor(tournamentId, members("A")), B: tableFor(tournamentId, members("B")) };
 }
 
 /**
- * Round robin only: once every league match is done, puts the top 2 into the empty final
- * (1st place as p1). Returns true if it just did that.
+ * Once every league or group match is done, fills the playoffs from the standings: the
+ * round-robin final gets the top 2 (1st as p1); the group semis get A1 vs B2 and B1 vs A2.
+ * Returns true if it just did that.
  */
-function fillLeagueFinal(tournamentId: number): boolean {
-  if (getTournament(tournamentId)!.format !== "round_robin") return false;
-  const matches = listMatches(tournamentId);
-  const final = matches.at(-1)!;
-  if (final.p1_id || matches.slice(0, -1).some((m) => m.status !== "done")) return false;
-  const [first, second] = leagueStandings(tournamentId);
-  db.query("UPDATE matches SET p1_id = $p1, p2_id = $p2 WHERE id = $id").run({
-    p1: first!.playerId,
-    p2: second!.playerId,
-    id: final.id,
-  });
+function fillPlayoffsFromStandings(tournamentId: number): boolean {
+  const targets = standingsFilledMatches(tournamentId);
+  if (targets.length === 0 || targets[0]!.p1_id || stageMatches(tournamentId).some((m) => m.status !== "done")) return false;
+
+  const fill = db.query("UPDATE matches SET p1_id = $p1, p2_id = $p2 WHERE id = $id");
+  if (getTournament(tournamentId)!.format === "round_robin") {
+    const [first, second] = leagueStandings(tournamentId);
+    fill.run({ p1: first!.playerId, p2: second!.playerId, id: targets[0]!.id });
+  } else {
+    const tables = groupStandings(tournamentId);
+    const ids = (rows: StandingRow[]) => rows.map((r) => r.playerId);
+    semifinalPairs(ids(tables.A), ids(tables.B)).forEach(([p1, p2], i) => fill.run({ p1, p2, id: targets[i]!.id }));
+  }
   return true;
 }
