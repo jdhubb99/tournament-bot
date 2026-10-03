@@ -243,15 +243,18 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 | `/undo` | Remove the last reported game |
 | `/bracket` | Bracket image (live match, queue, results, champion) plus the live match as text. Shows the last finished tournament when none is running (round robin and groups: a standings image instead) |
 | `/history` | Past tournaments, newest first, two lines each: "date and time · Knockout, 4 players, semis Bo1" (no tournament number, since cancelled tournaments would leave gaps) then "🏆 **Jegson** (2nd title) beat Jako 2–1 in the final (Bo3)". A best-of-1 final shows goals, longer finals show games won |
-| `/leaderboard` | Titles, series record, game record, goal differential |
-| `/stats @player` | Personal stats and head-to-head records |
+| `/leaderboard [game]` | Titles, series record, game record, goal differential (image) |
+| `/stats [player] [game]` | Personal stats and head-to-head records (image; defaults to yourself) |
 | `/pick count options` | Random picker |
 
 ## Stats
 
 - Titles won (a title = winning the tournament final, in either format), series record, game record, goals for/against, goal differential
 - Head-to-head between any two players (series and games)
-- All queries accept an optional `game` filter; default is Rocket League
+- All queries accept an optional `game` filter; default is Rocket League. It matches ignoring case.
+- Stats count every decided match from finished and in-progress tournaments. Cancelled tournaments don't count.
+- `/leaderboard` ranks everyone who has played by titles, then series wins, then game difference, then goal difference, then fewest series losses. It shows up to 15 players as an image (titles, series W-L, games W-L, GD) and says how many there are when there are more.
+- `/stats [player] [game]` defaults to yourself. It shows a profile card (avatar ringed in gold if they've won a title, titles, series, games, and goals with goal difference) above their head-to-head record against each opponent, most-played first.
 
 ## Visuals
 
@@ -326,8 +329,8 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 **Done when:** tournaments with 6, 7, and 8 players each run start to finish.
 
 ### Phase 7 — Stats
-- [ ] `/leaderboard`, `/stats @player` with head-to-head
-- [ ] `game` filter plumbed through queries
+- [x] `/leaderboard`, `/stats @player` with head-to-head
+- [x] `game` filter plumbed through queries
 
 ### Phase 8 — Visuals
 - [x] SVG bracket layout for single elim (4 and 8 players, in `render/bracket-image.ts`): match cards with avatars ringed in team colors, seeds, scores (goals as numbers for a best of 1; games won as dots for a best of 3 or 5, with a key under the bracket when it mixes both), the live match outlined in red, the winning row marked in its team color, and the champion in gold
