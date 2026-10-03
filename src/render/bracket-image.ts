@@ -12,8 +12,8 @@ export interface BracketSlot {
   avatar: Uint8Array | null;
   /** Null before the match goes live. */
   team: Team | null;
-  /** Seed number, shown beside first-round rows only. */
-  seed: number | null;
+  /** Shown beside first-round rows only: a seed number, or a group finish like "A1". */
+  seed: number | string | null;
   /** Goals for a best of 1 (drawn as a number), games won for longer series (drawn as dots); null before anything is reported. */
   score: number | null;
   won: boolean;
@@ -33,7 +33,7 @@ export interface BracketChampion {
 }
 
 export const PAD = 40;
-const SEED_W = 34;
+export const SEED_W = 34;
 export const CARD_W = 300;
 const ROW_H = 46;
 export const CARD_H = ROW_H * 2;
@@ -149,26 +149,33 @@ export function intoRounds<T>(matches: readonly T[]): T[][] {
   return rounds;
 }
 
-/**
- * A single-elimination bracket: rounds as columns joined by connector lines, each match
- * a card with two player rows, and the champion in gold at the end once there is one.
- * Matches must be in plan order with 3 (4 players) or 7 (8 players) entries.
- */
-export function renderBracketImage(matches: readonly BracketMatch[], champion: BracketChampion | null): Uint8Array {
-  const rounds = intoRounds(matches);
-  const firstCount = rounds[0]!.length;
+/** Size of a bracket drawn by `layoutBracket`, measured from its origin. */
+export function bracketSize(matchCount: number): { width: number; height: number } {
+  const rounds = intoRounds([...Array(matchCount)]);
   const slotH = LABEL_H + CARD_H + ROUND_ONE_GAP;
-  const width = PAD + SEED_W + rounds.length * (CARD_W + COL_GAP) + CHAMPION_W + PAD;
-  // A key under the bracket, only when it mixes goal numbers and game dots.
-  const mixed = matches.some((m) => m.bestOf === 1) && matches.some((m) => m.bestOf > 1);
-  const bracketBottom = PAD + firstCount * slotH - ROUND_ONE_GAP;
-  const height = bracketBottom + (mixed ? KEY_H : 0) + PAD;
+  return {
+    width: SEED_W + rounds.length * (CARD_W + COL_GAP) + CHAMPION_W,
+    height: rounds[0]!.length * slotH - ROUND_ONE_GAP,
+  };
+}
 
-  const centers: number[][] = [rounds[0]!.map((_, i) => PAD + LABEL_H + i * slotH + CARD_H / 2)];
+/**
+ * Draws a knockout bracket with its top-left corner at (originX, originY): rounds as columns
+ * joined by connector lines, then the champion badge. Matches are in plan order.
+ */
+export function layoutBracket(
+  matches: readonly BracketMatch[],
+  champion: BracketChampion | null,
+  originX: number,
+  originY: number,
+): string {
+  const rounds = intoRounds(matches);
+  const slotH = LABEL_H + CARD_H + ROUND_ONE_GAP;
+  const centers: number[][] = [rounds[0]!.map((_, i) => originY + LABEL_H + i * slotH + CARD_H / 2)];
   for (let r = 1; r < rounds.length; r++) {
     centers.push(rounds[r]!.map((_, i) => (centers[r - 1]![2 * i]! + centers[r - 1]![2 * i + 1]!) / 2));
   }
-  const columnX = (r: number) => PAD + SEED_W + r * (CARD_W + COL_GAP);
+  const columnX = (r: number) => originX + SEED_W + r * (CARD_W + COL_GAP);
 
   const parts: string[] = [];
   rounds.forEach((round, r) => {
@@ -186,17 +193,29 @@ export function renderBracketImage(matches: readonly BracketMatch[], champion: B
       }
     });
   });
-
   parts.push(championBadge(columnX(rounds.length) + CHAMPION_W / 2 - 20, centers.at(-1)![0]!, champion));
+  return parts.join("");
+}
 
-  if (mixed) {
-    const keyY = bracketBottom + KEY_H - 8;
-    parts.push(
-      text(PAD + SEED_W, keyY, "Numbers are goals (best of 1)", { size: 20, fill: MUTED }) +
-        pips(PAD + SEED_W + 262, keyY - 7, 2, 1, MUTED) +
-        text(PAD + SEED_W + 280, keyY, "are games won (best of 3 or 5)", { size: 20, fill: MUTED }),
-    );
-  }
-
+/**
+ * A single-elimination bracket image (4 or 8 players: 3 or 7 matches in plan order), with
+ * a key under it when it mixes best-of-1 goal numbers and longer series' win dots.
+ */
+export function renderBracketImage(matches: readonly BracketMatch[], champion: BracketChampion | null): Uint8Array {
+  const size = bracketSize(matches.length);
+  const mixed = matches.some((m) => m.bestOf === 1) && matches.some((m) => m.bestOf > 1);
+  const width = PAD + size.width + PAD;
+  const height = PAD + size.height + (mixed ? KEY_H : 0) + PAD;
+  const parts = [layoutBracket(matches, champion, PAD, PAD)];
+  if (mixed) parts.push(scoreKey(PAD + SEED_W, PAD + size.height + KEY_H - 8));
   return toPng(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${parts.join("")}</svg>`);
+}
+
+/** "Numbers are goals (best of 1) · ●○ are games won (best of 3 or 5)", with its baseline at y. */
+export function scoreKey(x: number, y: number): string {
+  return (
+    text(x, y, "Numbers are goals (best of 1)", { size: 20, fill: MUTED }) +
+    pips(x + 262, y - 7, 2, 1, MUTED) +
+    text(x + 280, y, "are games won (best of 3 or 5)", { size: 20, fill: MUTED })
+  );
 }
