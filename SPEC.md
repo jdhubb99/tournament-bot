@@ -373,12 +373,12 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 - [x] Simple periodic backup of `bot.db` (a daily `VACUUM INTO` snapshot by the compose `backup` service into `./backups`, keeping the newest `BACKUP_KEEP`, default 14)
 
 ### Phase 10 — Dropping players
-- [ ] `dropped_after_game` on `tournament_players`, with a migration for existing databases
-- [ ] Forfeit rules in `logic/forfeit.ts`: who is already out, the next match a dropped player can't play, dropped players last in a table
-- [ ] Forfeits in `store.ts`: `forfeitPlayer()`, and `recordGame()` deciding matches with a dropped player as they come up
-- [ ] `/undo` stops at a forfeit and undoes the forfeits a game triggered
-- [ ] `/tournament forfeit player` with private confirmation, the public post, and the live bracket refresh
-- [ ] Forfeits shown in results, `/history`, the bracket ("FF") and tables (dimmed, at the bottom); left out of stats
+- [x] `dropped_after_game` on `tournament_players`, with a migration for existing databases
+- [x] Forfeit rules in `logic/forfeit.ts`: who is already out, the next match a dropped player can't play, dropped players last in a table
+- [x] Forfeits in `store.ts`: `forfeitPlayer()`, and `recordGame()` deciding matches with a dropped player as they come up (both go through `settle()`)
+- [x] `/undo` stops at a forfeit and undoes the forfeits a game triggered
+- [x] `/tournament forfeit player` with private confirmation, the public post, and the live bracket refresh
+- [x] Forfeits shown in results, `/history`, the bracket ("FF") and tables (dimmed, at the bottom); left out of stats
 
 **Done when:** a player can drop out of a 4-, 5-, 6-, 7- or 8-player tournament at any point and it still finishes with a champion.
 
