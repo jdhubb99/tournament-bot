@@ -1,4 +1,4 @@
-import { mock } from "bun:test";
+import { mock, type Mock } from "bun:test";
 import { ChannelType } from "discord.js";
 import { useTournamentChannel } from "../channel.ts";
 import { db } from "../db.ts";
@@ -31,12 +31,26 @@ export function resetDb(): void {
 /** A #tournaments channel. `members` maps user id → server display name; others fall back to user lookup. */
 export function fakeChannel(opts: { members?: Record<string, string>; permissions?: string[] | null } = {}) {
   const members = opts.members ?? {};
+  // Messages the bot has sent, by id, so they can be fetched and edited like real ones.
+  const sent = new Map<string, FakeMessage>();
   return {
+    sent,
     id: "channel-1",
     name: "tournaments",
     type: ChannelType.GuildText,
     guildId: "guild-1",
-    send: mock(async (_message: unknown) => {}),
+    send: mock(async (message: unknown) => {
+      const fake: FakeMessage = { id: `msg-${sent.size + 1}`, content: message, edit: mock(async (_edit: unknown) => fake) };
+      sent.set(fake.id, fake);
+      return fake;
+    }),
+    messages: {
+      fetch: mock(async (id: string) => {
+        const message = sent.get(id);
+        if (!message) throw new Error("Unknown Message");
+        return message;
+      }),
+    },
     permissionsFor: () => {
       const granted = opts.permissions;
       if (granted === null) return null;
@@ -60,6 +74,20 @@ export function fakeChannel(opts: { members?: Record<string, string>; permission
       },
     },
   };
+}
+
+export interface FakeMessage {
+  id: string;
+  /** What was passed to send(). */
+  content: unknown;
+  edit: Mock<(edit: unknown) => Promise<FakeMessage>>;
+}
+
+/** The first argument of every send() whose content starts with `prefix`. */
+export function sentStartingWith(channel: { send: { mock: { calls: unknown[][] } } }, prefix: string): any[] {
+  return channel.send.mock.calls
+    .map((c) => c[0] as { content?: string })
+    .filter((m) => typeof m.content === "string" && m.content.startsWith(prefix));
 }
 
 /** Installs a fresh fake #tournaments channel and returns it. */
