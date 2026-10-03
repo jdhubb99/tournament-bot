@@ -4,13 +4,15 @@ import {
   announceStageFinished,
   announceLiveMatch,
   bracketImage,
+  bracketPost,
   currentMatchPost,
   fetchAvatar,
   matchResult,
+  refreshBracketMessage,
   seriesUpdate,
 } from "./announce.ts";
 import { useTournamentChannel } from "./channel.ts";
-import { getLiveMatch, getMatch, recordGame, type Match } from "./store.ts";
+import { cancelTournament, getLiveMatch, getMatch, getTournament, recordGame, setBracketMessage, type Match } from "./store.ts";
 import {
   arg,
   cast,
@@ -351,5 +353,66 @@ describe("groups and 8-player posts", () => {
     const file = await bracketImage(id);
     const view = new DataView((file.attachment as Buffer).buffer, (file.attachment as Buffer).byteOffset);
     expect([view.getUint32(16), view.getUint32(20)]).toEqual([1424, 708]); // quarters, semis, final, plus the key
+  });
+});
+
+describe("live bracket message", () => {
+  let channel: ReturnType<typeof fakeChannel>;
+  beforeEach(() => {
+    resetDb();
+    channel = fakeChannel();
+    useTournamentChannel(cast(channel));
+  });
+
+  it("titles the bracket by format and status", async () => {
+    const id = startedTournament();
+    expect((await bracketPost(id)).embed.toJSON().title).toBe("Rocket League 1v1 — Knockout, 4 players");
+    cancelTournament(id);
+    expect((await bracketPost(id)).embed.toJSON().title).toBe("Rocket League 1v1 — Knockout, 4 players (cancelled)");
+    const done = startedTournament({ semis: 1, final: 1 });
+    playToTheEnd(done);
+    expect((await bracketPost(done)).embed.toJSON().title).toBe("Rocket League 1v1 — Knockout, 4 players (finished)");
+  });
+
+  it("posts the bracket the first time and remembers the message", async () => {
+    const id = startedTournament();
+    await refreshBracketMessage(id);
+    expect(channel.send).toHaveBeenCalledTimes(1);
+    expect(arg(channel.send).files[0].name).toBe("bracket.png");
+    expect(getTournament(id)?.bracket_msg_id).toBe("msg-1");
+  });
+
+  it("edits the same message after that, replacing the old image", async () => {
+    const id = startedTournament();
+    await refreshBracketMessage(id);
+    recordGame(getLiveMatch(id)!, 3, 1, "r", "goons");
+    await refreshBracketMessage(id);
+    expect(channel.send).toHaveBeenCalledTimes(1);
+    const edit = arg(channel.sent.get("msg-1")!.edit);
+    expect(edit.attachments).toEqual([]);
+    expect(edit.files[0].name).toBe("bracket.png");
+    expect(edit.embeds[0].toJSON().description).toBe("🔴 Live: **Semifinal 2** (Bo1): C vs D");
+  });
+
+  it("posts a new message if the old one was deleted", async () => {
+    const id = startedTournament();
+    setBracketMessage(id, "deleted-message");
+    await refreshBracketMessage(id);
+    expect(channel.send).toHaveBeenCalledTimes(1);
+    expect(getTournament(id)?.bracket_msg_id).toBe("msg-1");
+  });
+
+  it("logs instead of throwing when the update fails", async () => {
+    const id = startedTournament();
+    channel.send.mockImplementation(async () => {
+      throw new Error("Missing Permissions");
+    });
+    const error = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(refreshBracketMessage(id)).resolves.toBeUndefined();
+      expect(error.mock.calls[0]?.[0]).toBe(`Couldn't update the bracket message for tournament ${id}:`);
+    } finally {
+      error.mockRestore();
+    }
   });
 });

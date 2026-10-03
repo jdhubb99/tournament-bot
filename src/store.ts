@@ -457,3 +457,8 @@ export function titleCounts(guildId: string, game = DEFAULT_GAME): Map<string, n
     .all({ g: guildId, game });
   return new Map(rows.map((r) => [r.winner_id, r.n]));
 }
+
+/** Remembers the tournament's live bracket message so it can be edited in place. */
+export function setBracketMessage(tournamentId: number, messageId: string): void {
+  db.query("UPDATE tournaments SET bracket_msg_id = $m WHERE id = $id").run({ m: messageId, id: tournamentId });
+}

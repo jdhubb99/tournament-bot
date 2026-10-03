@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { useTournamentChannel } from "../channel.ts";
 import { db } from "../db.ts";
 import { getLiveMatch, getOpenTournament, getTournament, listMatches, listTournamentPlayers } from "../store.ts";
-import { arg, cast, fakeChannel, fakeInteraction, resetDb } from "../test/helpers.ts";
+import { arg, cast, fakeChannel, fakeInteraction, resetDb, sentStartingWith } from "../test/helpers.ts";
 import { tournament } from "./tournament.ts";
 
 let channel: ReturnType<typeof fakeChannel>;
@@ -166,7 +166,7 @@ describe("signup buttons", () => {
     expect(matches).toHaveLength(11);
     expect(matches[10]).toMatchObject({ label: "Final", p1_id: null, p2_id: null, best_of: 5, play_order: 11 });
     expect(getLiveMatch(id)).toMatchObject({ label: "Match 1", best_of: 1 });
-    expect(arg(channel.send).content).toStartWith("Up next: ");
+    expect(sentStartingWith(channel, "Up next: ")).toHaveLength(1);
   });
 
   it("starts a 4-player bracket and announces Semifinal 1", async () => {
@@ -185,9 +185,13 @@ describe("signup buttons", () => {
     const closed = arg(interaction.update);
     expect(closed.embeds[0].toJSON().title).toBe("Rocket League 1v1 — Signup closed");
     expect(closed.components).toEqual([]);
-    expect(arg(channel.send).content).toBe(`Up next: <@${seeded[0]}> vs <@${seeded[1]}> (Bo3)`);
+    // The live bracket is posted first and remembered, then the "Up next" ping.
+    expect(arg(channel.send).files[0].name).toBe("bracket.png");
+    expect(getTournament(id)?.bracket_msg_id).toBe("msg-1");
+    const [upNext] = sentStartingWith(channel, "Up next: ");
+    expect(upNext.content).toBe(`Up next: <@${seeded[0]}> vs <@${seeded[1]}> (Bo3)`);
     // Avatar downloads fail offline, so the versus image falls back to placeholders.
-    expect(arg(channel.send).files[0].name).toBe("versus.png");
+    expect(upNext.files[0].name).toBe("versus.png");
   });
 });
 
@@ -221,6 +225,15 @@ describe("/tournament cancel", () => {
     const interaction = await press("keep", id);
     expect(arg(interaction.update)).toEqual({ content: "Okay, the tournament continues.", components: [] });
     expect(getTournament(id)?.status).toBe("signup");
+  });
+
+  it("marks an in-progress tournament's bracket message cancelled", async () => {
+    const id = await startSignup();
+    await joinPlayers(id, 4);
+    await press("start", id); // posts the live bracket as msg-1
+    await press("cancel", id);
+    const edit = arg(channel.sent.get("msg-1")!.edit);
+    expect(edit.embeds[0].toJSON().title).toEndWith("(cancelled)");
   });
 
   it("cancels on confirmation and tells the channel", async () => {

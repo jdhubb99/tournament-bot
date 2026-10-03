@@ -1,5 +1,6 @@
 import { MessageFlags, SlashCommandBuilder, type ChatInputCommandInteraction } from "discord.js";
 import { cancelTournament, getOpenTournament, listTournamentPlayers } from "../store.ts";
+import { refreshBracketMessage } from "../announce.ts";
 import { MAX_PLAYERS } from "../logic/format.ts";
 import { joinSignup, type JoinResult } from "./tournament.ts";
 import type { Command } from "./types.ts";
@@ -45,6 +46,7 @@ async function cancel(interaction: Interaction) {
     return;
   }
   cancelTournament(tournament.id);
+  if (tournament.status === "active") await refreshBracketMessage(tournament.id);
   await reply(interaction, `Cancelled tournament #${tournament.id}. You can run \`/tournament start\` again.`);
 }
 
