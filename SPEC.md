@@ -339,12 +339,12 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 - [x] Edit-in-place bracket message after each match
 
 ### Phase 9 — Hosting
-- [ ] Register commands globally
-- [ ] Always-on host (VPS, Raspberry Pi, or Fly.io/Railway). On a Pi, use a 64-bit OS, since Bun ships arm64 Linux builds
-- [ ] Pin the Bun version on the host (e.g. a specific `oven/bun` Docker image tag) and upgrade deliberately
-- [ ] Persistent storage for the SQLite file
-- [ ] Keep it running with a systemd service or a Docker restart policy
-- [ ] Simple periodic backup of `bot.db`
+- [x] Register commands globally (`bun run deploy:global`, or `docker compose run --rm bot bun src/deploy-commands.ts --global` on the host). It registers everything except `/dev` and clears the guild-only copies. `bun run deploy` stays guild-only for development
+- [ ] Always-on host (VPS, Raspberry Pi, or Fly.io/Railway). On a Pi, use a 64-bit OS, since Bun ships arm64 Linux builds. Chosen: Docker on a VPS. The image and its tests are verified on linux/amd64 and linux/arm64; README.md "Hosting" has the steps
+- [x] Pin the Bun version on the host (e.g. a specific `oven/bun` Docker image tag) and upgrade deliberately (`oven/bun:1.3.9-slim` in the Dockerfile; README.md "Upgrading Bun")
+- [x] Persistent storage for the SQLite file (`./data` bind-mounted into the container)
+- [x] Keep it running with a systemd service or a Docker restart policy (`restart: unless-stopped` in docker-compose.yml)
+- [x] Simple periodic backup of `bot.db` (a daily `VACUUM INTO` snapshot by the compose `backup` service into `./backups`, keeping the newest `BACKUP_KEEP`, default 14)
 
 ## Edge cases to handle
 
