@@ -7,7 +7,7 @@ import { semifinalPairs, type GroupLabel } from "./logic/groups.ts";
 import { allMatchesDone, nextMatchToPlay } from "./logic/queue.ts";
 import type { MatchRecord } from "./logic/stats.ts";
 import { standings, type StandingRow } from "./logic/roundrobin.ts";
-import { seriesState, type SeriesState } from "./logic/series.ts";
+import { seriesState, stageOf, type SeriesState } from "./logic/series.ts";
 import type { Team } from "./logic/teams.ts";
 
 export type TournamentStatus = "signup" | "active" | "done" | "cancelled";
@@ -166,6 +166,22 @@ export function cancelTournament(tournamentId: number): void {
     id: tournamentId,
   });
 }
+
+/**
+ * Changes the semis and/or final length of a tournament in signup or in progress, along with
+ * every undecided match in that round. Callers check the change first (`checkLengthChange()`).
+ */
+export const changeSeriesLengths = db.transaction((tournamentId: number, lengths: Partial<SeriesLengths>): void => {
+  const matches = listMatches(tournamentId);
+  for (const stage of ["semis", "final"] as const) {
+    const bestOf = lengths[stage];
+    if (bestOf === undefined) continue;
+    db.query(`UPDATE tournaments SET ${stage}_best_of = $b WHERE id = $id`).run({ b: bestOf, id: tournamentId });
+    for (const m of matches.filter((m) => stageOf(m.label) === stage && m.status !== "done")) {
+      db.query("UPDATE matches SET best_of = $b WHERE id = $id").run({ b: bestOf, id: m.id });
+    }
+  }
+});
 
 export interface Game {
   id: number;

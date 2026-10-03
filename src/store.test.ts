@@ -240,6 +240,44 @@ describe("undoLastGame", () => {
   });
 });
 
+describe("changeSeriesLengths", () => {
+  const lengthsOf = (id: number) => Object.fromEntries(store.listMatches(id).map((m) => [m.label, m.best_of]));
+
+  it("changes a signup tournament's options", () => {
+    const id = signup("g", ["a", "b"]);
+    store.changeSeriesLengths(id, { semis: 5, final: 1 });
+    expect(store.getTournament(id)).toMatchObject({ semis_best_of: 5, final_best_of: 1 });
+  });
+
+  it("changes only the given round, in both the options and its matches", () => {
+    const id = startedEight({ semis: 1, final: 3 });
+    store.changeSeriesLengths(id, { final: 1 });
+    expect(store.getTournament(id)).toMatchObject({ semis_best_of: 1, final_best_of: 1 });
+    expect(lengthsOf(id)).toMatchObject({ "Quarterfinal 1": 1, "Semifinal 1": 1, "Semifinal 2": 1, Final: 1 });
+
+    store.changeSeriesLengths(id, { semis: 3 });
+    expect(lengthsOf(id)).toMatchObject({ "Quarterfinal 4": 1, "Semifinal 1": 3, "Semifinal 2": 3, Final: 1 });
+  });
+
+  it("leaves decided matches as they were played", () => {
+    const id = startedTournament({ semis: 1, final: 3 });
+    store.recordGame(store.getLiveMatch(id)!, 1, 0, "r", "goons"); // Semifinal 1 decided as a Bo1
+    store.changeSeriesLengths(id, { semis: 3, final: 5 });
+    expect(lengthsOf(id)).toEqual({ "Semifinal 1": 1, "Semifinal 2": 3, Final: 5 });
+  });
+
+  it("changes a live match, so later reports use the new length", () => {
+    const id = startedRoundRobin(3);
+    playLeague(id);
+    const final = store.getLiveMatch(id)!;
+    store.recordGame(final, 2, 1, "r", "goons");
+    store.changeSeriesLengths(id, { final: 5 });
+    const outcome = store.recordGame(store.getLiveMatch(id)!, 2, 1, "r", "goons");
+    expect(outcome.series).toMatchObject({ p1Wins: 2, winsNeeded: 3, winner: null });
+    expect(store.getTournament(id)!.status).toBe("active");
+  });
+});
+
 describe("getUndoableTournament", () => {
   it("is the newest tournament when it's active or done", () => {
     expect(store.getUndoableTournament("guild-1")).toBeNull();
