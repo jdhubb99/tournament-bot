@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { checkReport, describeSeries, seriesState, winsNeeded } from "./series.ts";
+import { checkLengthChange, checkReport, describeSeries, seriesState, stageOf, winsNeeded } from "./series.ts";
 
 const p1Win = { p1_score: 3, p2_score: 1 };
 const p2Win = { p1_score: 0, p2_score: 2 };
@@ -52,6 +52,54 @@ describe("checkReport", () => {
     expect(checkReport(players, "a", -1, -2)).toEqual({ ok: false, reason: "negative" });
     expect(checkReport(players, "a", 2.5, 1)).toEqual({ ok: false, reason: "negative" });
     expect(checkReport(players, "a", 2, 0.5)).toEqual({ ok: false, reason: "negative" });
+  });
+});
+
+describe("stageOf", () => {
+  it("maps semis and the final to their length option", () => {
+    expect(stageOf("Final")).toBe("final");
+    expect(stageOf("Semifinal 1")).toBe("semis");
+    expect(stageOf("Semifinal 2")).toBe("semis");
+  });
+
+  it("leaves always-best-of-1 matches out", () => {
+    for (const label of ["Quarterfinal 3", "Match 4", "Group A - Match 2"]) expect(stageOf(label)).toBeNull();
+  });
+});
+
+describe("checkLengthChange", () => {
+  const match = (status: "pending" | "live" | "done", games: { p1_score: number; p2_score: number }[] = []) => ({
+    label: status === "done" ? "Semifinal 1" : "Semifinal 2",
+    status,
+    games,
+  });
+
+  it("allows matches that haven't started", () => {
+    expect(checkLengthChange([match("pending"), match("pending")], 3)).toEqual({ ok: true });
+    expect(checkLengthChange([], 5)).toEqual({ ok: true });
+  });
+
+  it("allows a live series that the new length doesn't decide", () => {
+    expect(checkLengthChange([match("live", [p1Win])], 5)).toEqual({ ok: true });
+    expect(checkLengthChange([match("live", [p1Win, p2Win])], 3)).toEqual({ ok: true });
+  });
+
+  it("refuses once any match in the stage is decided", () => {
+    expect(checkLengthChange([match("done"), match("pending")], 3)).toEqual({
+      ok: false,
+      reason: "decided",
+      label: "Semifinal 1",
+    });
+  });
+
+  it("refuses a length the games already played would decide", () => {
+    expect(checkLengthChange([match("live", [p2Win])], 1)).toEqual({
+      ok: false,
+      reason: "too_short",
+      label: "Semifinal 2",
+      series: { p1Wins: 0, p2Wins: 1, winsNeeded: 1, winner: "p2" },
+    });
+    expect(checkLengthChange([match("live", [p1Win, p1Win, p2Win])], 3)).toMatchObject({ reason: "too_short" });
   });
 });
 
