@@ -1,8 +1,26 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { useTournamentChannel } from "../channel.ts";
 import { db } from "../db.ts";
-import { getLiveMatch, getOpenTournament, getTournament, listMatches, listTournamentPlayers } from "../store.ts";
-import { arg, cast, fakeChannel, fakeInteraction, resetDb, sentStartingWith } from "../test/helpers.ts";
+import {
+  getLiveMatch,
+  getOpenTournament,
+  getTournament,
+  listGames,
+  listMatches,
+  listTournamentPlayers,
+  recordGame,
+} from "../store.ts";
+import {
+  arg,
+  cast,
+  fakeChannel,
+  fakeInteraction,
+  resetDb,
+  sentStartingWith,
+  startedEight,
+  startedRoundRobin,
+  startedTournament,
+} from "../test/helpers.ts";
 import { tournament } from "./tournament.ts";
 
 let channel: ReturnType<typeof fakeChannel>;
@@ -254,5 +272,93 @@ describe("/tournament cancel", () => {
     expect(arg(interaction.update).content).toBe("That tournament has already ended.");
     expect(getTournament(id)?.status).toBe("done");
     expect(arg((await press("cancel", 999)).update).content).toBe("That tournament has already ended.");
+  });
+});
+
+describe("/tournament series", () => {
+  async function change(integers: Record<string, number>, user = { id: "u1", name: "Player One" }) {
+    const interaction = fakeInteraction({ subcommand: "series", integers, user });
+    await tournament.execute(cast(interaction));
+    return arg(interaction.reply);
+  }
+  const lengthsOf = (id: number) => Object.fromEntries(listMatches(id).map((m) => [m.label, m.best_of]));
+
+  it("says when nothing is running", async () => {
+    expect(await change({ final: 1 })).toMatchObject({ content: "No tournament is running.", flags: expect.any(Number) });
+  });
+
+  it("changes a signup tournament's lengths before anyone starts", async () => {
+    const id = await startSignup();
+    const reply = await change({ semis: 3, final: 5 }, { id: "boss", name: "Boss" });
+    expect(reply).toEqual({
+      content: "🔧 <@boss> changed the series length.\nSemifinals: Bo1 → **Bo3 (first to 2)**\nFinal: Bo3 → **Bo5 (first to 3)**",
+      allowedMentions: { parse: [] },
+    });
+    expect(getTournament(id)).toMatchObject({ semis_best_of: 3, final_best_of: 5 });
+    expect(channel.send).not.toHaveBeenCalled();
+
+    await joinPlayers(id, 4);
+    await press("start", id);
+    expect(lengthsOf(id)).toEqual({ "Semifinal 1": 3, "Semifinal 2": 3, Final: 5 });
+  });
+
+  it("changes a running tournament's upcoming matches and refreshes the bracket", async () => {
+    const id = startedEight({ semis: 1, final: 3 });
+    const reply = await change({ final: 1 });
+    expect(reply.content).toBe("🔧 <@u1> changed the series length.\nFinal: Bo3 → **Bo1**");
+    expect(lengthsOf(id)).toMatchObject({ "Quarterfinal 1": 1, "Semifinal 1": 1, Final: 1 });
+    expect(arg(channel.send).files[0].name).toBe("bracket.png");
+    expect(getTournament(id)?.bracket_msg_id).toBe("msg-1");
+  });
+
+  it("lengthens the live match mid-series", async () => {
+    const id = startedTournament({ semis: 3, final: 3 });
+    recordGame(getLiveMatch(id)!, 2, 1, "r", "goons");
+    await change({ semis: 5 });
+    expect(getLiveMatch(id)).toMatchObject({ label: "Semifinal 1", best_of: 5 });
+  });
+
+  it("only mentions the rounds that actually change", async () => {
+    startedTournament({ semis: 1, final: 3 });
+    expect((await change({ semis: 1, final: 5 })).content).toBe(
+      "🔧 <@u1> changed the series length.\nFinal: Bo3 → **Bo5 (first to 3)**",
+    );
+  });
+
+  it("says when there's nothing to change", async () => {
+    const id = startedTournament({ semis: 1, final: 3 });
+    expect((await change({})).content).toBe("Nothing to change. The semis are Bo1 and the final is Bo3.");
+    expect((await change({ semis: 1, final: 3 })).content).toBe(
+      "Nothing to change. The semis are Bo1 and the final is Bo3.",
+    );
+    expect(getTournament(id)).toMatchObject({ semis_best_of: 1, final_best_of: 3 });
+  });
+
+  it("only offers the final in a round robin", async () => {
+    const id = startedRoundRobin(3);
+    expect((await change({ semis: 3 })).content).toBe("This round robin has no semifinals, just the final.");
+    expect((await change({ final: 3 })).content).toBe("Nothing to change. The final is Bo3.");
+    await change({ final: 5 });
+    expect(lengthsOf(id).Final).toBe(5);
+  });
+
+  it("locks a round once one of its matches is decided", async () => {
+    const id = startedTournament({ semis: 1, final: 3 });
+    recordGame(getLiveMatch(id)!, 1, 0, "r", "goons"); // Semifinal 1 decided
+    const reply = await change({ semis: 3, final: 5 });
+    expect(reply.content).toBe("Semifinal 1 has already been decided, so the semis length is locked.");
+    expect(lengthsOf(id)).toEqual({ "Semifinal 1": 1, "Semifinal 2": 1, Final: 3 });
+    expect(getTournament(id)).toMatchObject({ semis_best_of: 1, final_best_of: 3 });
+  });
+
+  it("won't shorten a live series so far that its games would end it", async () => {
+    const id = startedTournament({ semis: 3, final: 3 });
+    recordGame(getLiveMatch(id)!, 0, 2, "r", "goons");
+    const reply = await change({ semis: 1 });
+    expect(reply.content).toBe(
+      "Semifinal 1 already stands at 1–0, so a best of 1 would end it. Use `/undo` first to shorten it.",
+    );
+    expect(getLiveMatch(id)).toMatchObject({ label: "Semifinal 1", best_of: 3 });
+    expect(listGames(getLiveMatch(id)!.id)).toHaveLength(1);
   });
 });

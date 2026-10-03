@@ -9,20 +9,24 @@ import {
 } from "discord.js";
 import { announceLiveMatch, refreshBracketMessage } from "../announce.ts";
 import { tournamentChannel } from "../channel.ts";
-import { singleElim } from "../logic/bracket.ts";
+import { singleElim, type SeriesLengths } from "../logic/bracket.ts";
 import { formatFor, MAX_PLAYERS, MIN_PLAYERS } from "../logic/format.ts";
 import { groupsPlan } from "../logic/groups.ts";
 import { shuffle } from "../logic/random.ts";
 import { roundRobinPlan } from "../logic/roundrobin.ts";
+import { checkLengthChange, stageOf, winsNeeded, type Stage } from "../logic/series.ts";
 import { randomTeam } from "../logic/teams.ts";
 import { signupEmbed } from "../render/embeds.ts";
 import {
   addTournamentPlayer,
   cancelTournament,
+  changeSeriesLengths,
   createTournament,
   getLiveMatch,
   getOpenTournament,
   getTournament,
+  listGames,
+  listMatches,
   listTournamentPlayers,
   startTournament,
   upsertPlayer,
@@ -111,6 +115,66 @@ async function begin(interaction: ButtonInteraction<"cached">, tournament: Tourn
   await announceLiveMatch(getLiveMatch(tournament.id)!);
 }
 
+const STAGES = ["semis", "final"] as const;
+const STAGE_NAMES: Record<Stage, string> = { semis: "Semifinals", final: "Final" };
+
+const lengthName = (bestOf: number) => (bestOf === 1 ? "Bo1" : `Bo${bestOf} (first to ${winsNeeded(bestOf)})`);
+
+/** Changes the semis and/or final length mid-signup or mid-tournament, keeping the seeding and every result. */
+async function changeLengths(interaction: ChatInputCommandInteraction<"cached">) {
+  const open = getOpenTournament(interaction.guildId);
+  if (!open) {
+    await interaction.reply(ephemeral("No tournament is running."));
+    return;
+  }
+  const roundRobin = open.status === "active" && open.format === "round_robin";
+  if (roundRobin && interaction.options.getInteger("semis") !== null) {
+    await interaction.reply(ephemeral("This round robin has no semifinals, just the final."));
+    return;
+  }
+
+  const current: SeriesLengths = { semis: open.semis_best_of, final: open.final_best_of };
+  const changes: Partial<SeriesLengths> = {};
+  for (const stage of STAGES) {
+    const bestOf = interaction.options.getInteger(stage);
+    if (bestOf !== null && bestOf !== current[stage]) changes[stage] = bestOf;
+  }
+  const changed = STAGES.filter((stage) => changes[stage] !== undefined);
+  if (changed.length === 0) {
+    const now = roundRobin
+      ? `The final is Bo${current.final}.`
+      : `The semis are Bo${current.semis} and the final is Bo${current.final}.`;
+    await interaction.reply(ephemeral(`Nothing to change. ${now}`));
+    return;
+  }
+
+  // Signup has no matches yet, so only the options change.
+  const matches = listMatches(open.id);
+  for (const stage of changed) {
+    const inStage = matches.filter((m) => stageOf(m.label) === stage).map((m) => ({ ...m, games: listGames(m.id) }));
+    const check = checkLengthChange(inStage, changes[stage]!);
+    if (check.ok) continue;
+    if (check.reason === "decided") {
+      await interaction.reply(ephemeral(`${check.label} has already been decided, so the ${stage} length is locked.`));
+    } else {
+      const { p1Wins, p2Wins } = check.series;
+      const standing = `${Math.max(p1Wins, p2Wins)}–${Math.min(p1Wins, p2Wins)}`;
+      await interaction.reply(
+        ephemeral(`${check.label} already stands at ${standing}, so a best of ${changes[stage]} would end it. Use \`/undo\` first to shorten it.`),
+      );
+    }
+    return;
+  }
+
+  changeSeriesLengths(open.id, changes);
+  const lines = changed.map((stage) => `${STAGE_NAMES[stage]}: Bo${current[stage]} → **${lengthName(changes[stage]!)}**`);
+  await interaction.reply({
+    content: [`🔧 <@${interaction.user.id}> changed the series length.`, ...lines].join("\n"),
+    allowedMentions: { parse: [] },
+  });
+  if (open.status === "active") await refreshBracketMessage(open.id);
+}
+
 async function askToCancel(interaction: ChatInputCommandInteraction<"cached">) {
   const open = getOpenTournament(interaction.guildId);
   if (!open) {
@@ -158,6 +222,13 @@ export const tournament: Command = {
         .addIntegerOption((o) => o.setName("semis").setDescription("Semifinal series length (default Bo1)").addChoices(...SERIES_CHOICES))
         .addIntegerOption((o) => o.setName("final").setDescription("Final series length (default Bo3)").addChoices(...SERIES_CHOICES)),
     )
+    .addSubcommand((sub) =>
+      sub
+        .setName("series")
+        .setDescription("Change the semifinal or final series length of the current tournament")
+        .addIntegerOption((o) => o.setName("semis").setDescription("New semifinal series length").addChoices(...SERIES_CHOICES))
+        .addIntegerOption((o) => o.setName("final").setDescription("New final series length").addChoices(...SERIES_CHOICES)),
+    )
     .addSubcommand((sub) => sub.setName("cancel").setDescription("Cancel the current tournament")),
   tournamentOnly: true,
 
@@ -166,6 +237,8 @@ export const tournament: Command = {
     switch (interaction.options.getSubcommand()) {
       case "start":
         return start(interaction);
+      case "series":
+        return changeLengths(interaction);
       case "cancel":
         return askToCancel(interaction);
     }
