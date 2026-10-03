@@ -1,3 +1,3 @@
-import { deployCommands } from "./deploy.ts";
+import { deployCommands, scopeFromArgs } from "./deploy.ts";
 
-await deployCommands();
+await deployCommands(scopeFromArgs(Bun.argv));

@@ -14,7 +14,8 @@ Bun handles everything: runtime, package manager, test runner, SQLite, and `.env
 bun install                       # install deps
 bun --watch src/index.ts          # dev
 bun src/index.ts                  # prod
-bun src/deploy-commands.ts        # register slash commands (guild-scoped in dev)
+bun run deploy                    # register slash commands in GUILD_ID only (dev, instant)
+bun run deploy:global             # register globally without /dev (hosting; up to an hour)
 bun test                          # all tests
 bun test src/logic/series.test.ts # one test file
 bun test -t "pattern"             # tests whose name matches
@@ -30,12 +31,16 @@ New slash commands go in `src/commands/` and get registered in the `commands` ar
 
 The user often runs `bun --watch src/index.ts` while we work, and that process holds `data/bot.db` open. Never write to or delete `data/`. Run ad-hoc scripts against a throwaway DB with `DB_PATH=":memory:" bun <script>`.
 
+## Hosting
+
+Production runs `docker compose` on a VPS (see README.md "Hosting"). The `Dockerfile` pins Bun to an exact `oven/bun` tag. Keep it equal to the local Bun version, and only bump it on purpose. `docker-compose.yml` runs the bot plus a daily `backup` service, with `./data` and `./backups` bind-mounted. Before changing either file, check the image still builds and passes `bun test` inside the container (`docker build -t tournament-bot . && docker run --rm tournament-bot bun test`).
+
 ## Testing and coverage
 
 - **Unit test every change as you add it.** New or changed code ships with `*.test.ts` tests in the same commit or the commit right after it. Don't leave testing to the end of a phase.
 - **Coverage must be 100% before a PR is opened.** `bunfig.toml` sets a 100% line and function threshold, so `bun test --coverage` exits non-zero if coverage drops below that.
 - **Bun only reports files that some test imports.** A source file no test loads simply doesn't appear in the table, and the total can still read 100%. Check that every file under `src/` is listed, and add a test that imports any file that's missing.
-- **Entry points are the only exclusion.** `src/index.ts` and `src/deploy-commands.ts` are excluded from coverage in `bunfig.toml`, because they log in to Discord when loaded. Keep each to a one-line call into a tested module (`bot.ts`, `deploy.ts`), and put any new logic in those modules.
+- **Entry points are the only exclusion.** `src/index.ts`, `src/deploy-commands.ts` and `src/backup-now.ts` are excluded from coverage in `bunfig.toml`, because they do real work (log in, call Discord, write files) as soon as they load. Keep each to a single call into a tested module (`bot.ts`, `deploy.ts`, `backup.ts`), and put any new logic in those modules.
 - `src/test/setup.ts` is preloaded for every test run. It sets `DB_PATH=":memory:"` and fake `.env` values, so tests never use the real token or `data/`. The tests share one in-memory DB, so call `resetDb()` in `beforeEach`. The setup file also replaces `fetch` with a stub that throws, so tests never reach the network. Tests that need `fetch` mock it with `spyOn(globalThis, "fetch")`.
 - Test Discord-facing code with the fakes in `src/test/helpers.ts` (`fakeInteraction`, `fakeChannel`, `cast`, `arg`) and assert on what gets replied, sent, or stored. Set the channel with `useTournamentChannel(fakeChannel())`. Every function counts toward coverage, including `.catch(() => ...)` callbacks and default mock implementations in the helpers, so test those failure paths too.
 

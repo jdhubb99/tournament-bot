@@ -2,5 +2,5 @@
 preload = ["./src/test/setup.ts"]
 coverageSkipTestFiles = true
 # Entry points only call into tested modules (see CLAUDE.md).
-coveragePathIgnorePatterns = ["src/index.ts", "src/deploy-commands.ts"]
+coveragePathIgnorePatterns = ["src/index.ts", "src/deploy-commands.ts", "src/backup-now.ts"]
 coverageThreshold = { lines = 1.0, functions = 1.0 }
