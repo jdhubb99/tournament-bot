@@ -84,6 +84,10 @@ Everyone who joins plays. The goal is to keep every tournament at roughly 12 mat
 - Quarterfinals (8 players) and group matches are always best-of-1.
 - Round robin: every league match is best-of-1. The top-2 final uses the `final` option (default Bo3, Bo5 allowed).
 - Games to win a series = `floor(best_of / 2) + 1`.
+- `/tournament series [semis] [final]` changes either length after `/tournament start`, during signup or mid-tournament, without redoing the seeding or any results. It updates the tournament's option and every undecided match in that round, posts the change publicly ("Final: Bo3 → **Bo1**"), and refreshes the live bracket. It refuses:
+  - a round with a decided match ("Semifinal 1 has already been decided, so the semis length is locked"), so both semis always share a length
+  - a length the live match's games would already decide (a Bo3 at 1–0 can't become a Bo1); `/undo` first
+  - `semis` in a round robin, which has no semifinals
 
 ### One match at a time (important)
 
@@ -238,6 +242,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 | Command | What it does |
 |---|---|
 | `/tournament start [semis] [final]` | Open signup with Join/Start buttons |
+| `/tournament series [semis] [final]` | Change the semis and/or final length of the current tournament, in signup or mid-tournament (see Series length) |
 | `/tournament cancel` | Cancel the active tournament (asks the person for private confirmation first, then announces it in the channel) |
 | `/report winner winner_score loser_score` | Record a game in the live match |
 | `/undo` | Remove the last reported game |
@@ -272,7 +277,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 - Round robin gets a standings table image, with the top-2 final matchup shown once the league is done
 - Groups format gets two small standings tables plus the semis/final bracket
 - 8-player bracket layout (quarters → semis → final)
-- After each match, **edit** the existing bracket message (`bracket_msg_id`) instead of posting a new one. The live bracket is posted when a tournament starts, just before the first "Up next". It's edited after every report (so a best of 3's dots stay current), every undo, and a cancel (title marked "(cancelled)"). If it was deleted, a fresh one is posted. A failed update is logged and never blocks the report
+- After each match, **edit** the existing bracket message (`bracket_msg_id`) instead of posting a new one. The live bracket is posted when a tournament starts, just before the first "Up next". It's edited after every report (so a best of 3's dots stay current), every undo, every series length change, and a cancel (title marked "(cancelled)"). If it was deleted, a fresh one is posted. A failed update is logged and never blocks the report
 - Keep rendering isolated in `render/` so it can be swapped without touching logic
 
 ## Phases

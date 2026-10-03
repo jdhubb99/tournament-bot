@@ -49,6 +49,42 @@ export function checkReport(
     : { ok: true, p1Score: loserScore, p2Score: winnerScore };
 }
 
+/** The two rounds whose series length is an option. Everything else is always best of 1. */
+export type Stage = "semis" | "final";
+
+/** Which length option a match follows, from its label, or null for a match that's always best of 1. */
+export function stageOf(label: string): Stage | null {
+  if (label === "Final") return "final";
+  if (label.startsWith("Semifinal")) return "semis";
+  return null;
+}
+
+export interface StageMatch {
+  label: string;
+  status: "pending" | "live" | "done";
+  games: readonly GameScore[];
+}
+
+export type LengthCheck =
+  | { ok: true }
+  | { ok: false; reason: "decided"; label: string }
+  | { ok: false; reason: "too_short"; label: string; series: SeriesState };
+
+/**
+ * Whether a stage's matches can switch to a new length. Not once any of them is decided,
+ * so both semis always share a length, and not to a length the games already played in
+ * the live one would decide.
+ */
+export function checkLengthChange(matches: readonly StageMatch[], bestOf: number): LengthCheck {
+  const decided = matches.find((m) => m.status === "done");
+  if (decided) return { ok: false, reason: "decided", label: decided.label };
+  for (const m of matches) {
+    const series = seriesState(m.games, bestOf);
+    if (series.winner) return { ok: false, reason: "too_short", label: m.label, series };
+  }
+  return { ok: true };
+}
+
 /** "Jake leads the series 2–1", "Series tied 1–1", or "Jake wins the series 2–1". Leader's wins come first. */
 export function describeSeries(state: SeriesState, p1Name: string, p2Name: string): string {
   const { p1Wins, p2Wins } = state;
