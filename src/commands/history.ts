@@ -22,10 +22,11 @@ function entry(t: Tournament & { finished_at: string }): string {
   const score = matchScore(final);
   const titles = titlesUpTo(t.guild_id, score.winnerId, t.id);
   // <t:…:f> shows the date and time in each viewer's own locale and timezone.
+  const how = score.forfeit ? "by forfeit" : `${score.winnerScore}–${score.loserScore}`;
   return [
     `<t:${unixSeconds(t.finished_at)}:f> · ${FORMAT_NAMES[t.format]}, ${players} players${semis}`,
     `> 🏆 **${playerName(score.winnerId)}** (${ordinal(titles)} title) beat ${playerName(score.loserId)} ` +
-      `${score.winnerScore}–${score.loserScore} in the final (Bo${final.best_of})`,
+      `${how} in the final (Bo${final.best_of})`,
   ].join("\n");
 }
 

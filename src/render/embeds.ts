@@ -103,8 +103,9 @@ export function resultLine(opts: {
   winnerScore: number;
   loserScore: number;
   series: boolean;
+  forfeit?: boolean;
 }): string {
-  const score = `${opts.series ? "series " : ""}${opts.winnerScore}–${opts.loserScore}`;
+  const score = opts.forfeit ? "forfeit" : `${opts.series ? "series " : ""}${opts.winnerScore}–${opts.loserScore}`;
   return `${opts.label}: **${opts.winnerName}** def. ${opts.loserName} (${score})`;
 }
 

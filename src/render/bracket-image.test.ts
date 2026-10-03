@@ -15,6 +15,7 @@ const slot = (name: string | null, extra: Partial<BracketSlot> = {}): BracketSlo
   seed: null,
   score: null,
   won: false,
+  forfeited: false,
   ...extra,
 });
 const match = (status: BracketMatch["status"], p1: BracketSlot, p2: BracketSlot): BracketMatch => ({
@@ -65,6 +66,15 @@ describe("renderBracketImage", () => {
     const changed = fourPlayer();
     changed[1]!.p1 = slot("A really very long player name", { seed: 3, score: 2, avatar: new Uint8Array([1, 2, 3]) });
     expect(same(plain, renderBracketImage(changed, null))).toBe(false);
+  });
+
+  it("draws FF for the player who forfeited, in place of a score", () => {
+    const decided = (forfeited: boolean) => {
+      const matches = fourPlayer();
+      matches[0] = { ...matches[0]!, status: "done", p1: slot("A", { won: true }), p2: slot("B", { forfeited }) };
+      return renderBracketImage(matches, null);
+    };
+    expect(same(decided(false), decided(true))).toBe(false);
   });
 });
 

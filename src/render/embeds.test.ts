@@ -115,6 +115,12 @@ describe("resultLine", () => {
       "Final: **Jake** def. Benny (series 2–1)",
     );
   });
+
+  it("says forfeit instead of a score", () => {
+    expect(resultLine({ ...base, label: "Final", winnerScore: 0, loserScore: 1, series: true, forfeit: true })).toBe(
+      "Final: **Jake** def. Benny (forfeit)",
+    );
+  });
 });
 
 describe("championEmbed", () => {

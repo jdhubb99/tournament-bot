@@ -1,6 +1,6 @@
 import { beforeEach, expect, it } from "bun:test";
 import { db } from "../db.ts";
-import { getLiveMatch, recordGame } from "../store.ts";
+import { forfeitPlayer, getLiveMatch, recordGame } from "../store.ts";
 import { arg, cast, fakeInteraction, resetDb, startedTournament } from "../test/helpers.ts";
 import { history } from "./history.ts";
 
@@ -56,6 +56,16 @@ it("shows goals for a best-of-1 final and counts titles over time, newest first"
       `<t:${secondUnix}:f> · Knockout, 4 players, semis Bo3\n> 🏆 **A** (2nd title) beat C 6–2 in the final (Bo1)`,
       `<t:${firstUnix}:f> · Knockout, 4 players, semis Bo1\n> 🏆 **A** (1st title) beat C 5–4 in the final (Bo1)`,
     ].join("\n\n"),
+  );
+});
+
+it("says when the final was won by forfeit", async () => {
+  const id = startedTournament({ semis: 1, final: 3 });
+  play(id, [[2, 1], [0, 3]]); // A and D reach the final
+  forfeitPlayer(id, "a", "goons");
+  const unix = finishAt(id, "2026-10-02 22:30:00");
+  expect((await run()).description).toBe(
+    `<t:${unix}:f> · Knockout, 4 players, semis Bo1\n> 🏆 **D** (1st title) beat A by forfeit in the final (Bo3)`,
   );
 });
 

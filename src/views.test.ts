@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { db } from "./db.ts";
-import { getLiveMatch, listMatches, recordGame } from "./store.ts";
+import { forfeitPlayer, getLiveMatch, listMatches, recordGame } from "./store.ts";
 import { resetDb, startedTournament } from "./test/helpers.ts";
 import {
   FORMAT_NAMES,
@@ -47,7 +47,19 @@ describe("views", () => {
   it("scores a decided match from the winner's side", () => {
     const id = startedTournament({ semis: 1, final: 3 });
     recordGame(live(id), 1, 4, "r", "goons");
-    expect(matchScore(listMatches(id)[0]!)).toEqual({ winnerId: "b", loserId: "a", winnerScore: 4, loserScore: 1 });
+    expect(matchScore(listMatches(id)[0]!)).toEqual({ winnerId: "b", loserId: "a", winnerScore: 4, loserScore: 1, forfeit: false });
+  });
+
+  it("marks a match won by forfeit, keeping any games won before it", () => {
+    const id = startedTournament({ semis: 3, final: 1 });
+    recordGame(live(id), 1, 4, "r", "goons"); // B leads A 1–0
+    forfeitPlayer(id, "b", "goons");
+    forfeitPlayer(id, "d", "goons"); // C wins Semifinal 2 and plays A in the final
+    forfeitPlayer(id, "c", "goons"); // A wins the final
+    const [sf1, sf2, final] = listMatches(id);
+    expect(matchScore(sf1!)).toEqual({ winnerId: "a", loserId: "b", winnerScore: 0, loserScore: 1, forfeit: true });
+    expect(resultLineFor(sf2!)).toBe("Semifinal 2: **C** def. D (forfeit)");
+    expect(resultLineFor(final!)).toBe("Final: **A** def. C (forfeit)");
   });
 
   it("writes ordinals", () => {

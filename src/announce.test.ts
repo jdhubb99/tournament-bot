@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn, type Mock } from "bun:test";
 import {
   announceChampion,
+  announceForfeits,
   announceStageFinished,
   announceLiveMatch,
   bracketImage,
@@ -12,7 +13,17 @@ import {
   seriesUpdate,
 } from "./announce.ts";
 import { useTournamentChannel } from "./channel.ts";
-import { cancelTournament, getLiveMatch, getMatch, getTournament, recordGame, setBracketMessage, type Match } from "./store.ts";
+import {
+  cancelTournament,
+  forfeitPlayer,
+  getLiveMatch,
+  getMatch,
+  getTournament,
+  listMatches,
+  recordGame,
+  setBracketMessage,
+  type Match,
+} from "./store.ts";
 import {
   arg,
   cast,
@@ -202,6 +213,27 @@ describe("results", () => {
     expect(getMatch(last.match.id)?.winner_id).toBe("c");
   });
 
+  it("pictures a champion who won the final by forfeit in their team from the last match they played", async () => {
+    const id = startedTournament({ semis: 1, final: 3 });
+    recordGame(getLiveMatch(id)!, 3, 1, "r", "goons"); // A beats B
+    recordGame(getLiveMatch(id)!, 0, 2, "r", "goons"); // D beats C, and the final goes live
+    expect(forfeitPlayer(id, "a", "goons").championId).toBe("d");
+    await announceChampion(id, "d");
+    expect(arg(channel.send).embeds[0].toJSON().fields).toEqual([
+      { name: "Runner-up", value: "A" },
+      { name: "Results", value: "Semifinal 1: **A** def. B (3–1)\nSemifinal 2: **D** def. C (2–0)\nFinal: **D** def. A (forfeit)" },
+    ]);
+  });
+
+  it("pictures a champion with no team on record on Goons", async () => {
+    const id = startedTournament({ semis: 1, final: 1 });
+    for (let i = 0; i < 3; i++) recordGame(getLiveMatch(id)!, 2, 1, "r", "goons");
+    const { db } = await import("./db.ts");
+    db.query("UPDATE matches SET p1_team = NULL WHERE tournament_id = $t").run({ t: id });
+    await announceChampion(id, "a");
+    expect(arg(channel.send).files.map((f: { name: string }) => f.name)).toEqual(["winner.png"]);
+  });
+
   it("falls back to the id when a player's name is missing", async () => {
     const id = startedTournament({ semis: 1, final: 1 });
     recordGame(getLiveMatch(id)!, 1, 0, "r", "goons");
@@ -211,6 +243,31 @@ describe("results", () => {
     db.exec("PRAGMA foreign_keys = OFF; DELETE FROM players WHERE discord_id = 'c'; PRAGMA foreign_keys = ON;");
     await announceChampion(id, last.championId!);
     expect(arg(channel.send).embeds[0].toJSON().fields[0].value).toBe("c");
+  });
+});
+
+describe("announceForfeits", () => {
+  let channel: ReturnType<typeof fakeChannel>;
+  beforeEach(() => {
+    resetDb();
+    channel = fakeChannel();
+    useTournamentChannel(cast(channel));
+  });
+
+  it("posts a line per match won by forfeit, pinging nobody", async () => {
+    const id = startedEight();
+    forfeitPlayer(id, "a", "goons");
+    forfeitPlayer(id, "d", "goons");
+    await announceForfeits(listMatches(id).filter((m) => m.status === "done"));
+    expect(arg(channel.send)).toEqual({
+      content: "🏳️ Quarterfinal 1: **B** def. A (forfeit)\n🏳️ Quarterfinal 2: **C** def. D (forfeit)",
+      allowedMentions: { parse: [] },
+    });
+  });
+
+  it("posts nothing when there are none", async () => {
+    await announceForfeits([]);
+    expect(channel.send).not.toHaveBeenCalled();
   });
 });
 
@@ -232,6 +289,18 @@ describe("bracketImage", () => {
       "https://cdn.test/user/c.png",
       "https://cdn.test/user/d.png",
     ]);
+  });
+
+  it("draws FF for a player who forfeited, and dims dropped players in the tables", async () => {
+    const id = startedGroups(6);
+    const before = Buffer.from((await bracketImage(id)).attachment as Buffer);
+    forfeitPlayer(id, "b", "goons");
+    const after = Buffer.from((await bracketImage(id)).attachment as Buffer);
+    expect(before.equals(after)).toBe(false);
+
+    const knockout = startedTournament();
+    forfeitPlayer(knockout, "a", "goons");
+    expect((await bracketImage(knockout)).name).toBe("bracket.png");
   });
 
   it("changes as results come in and draws the champion at the end", async () => {

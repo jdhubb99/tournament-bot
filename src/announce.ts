@@ -1,6 +1,7 @@
 import { AttachmentBuilder, type EmbedBuilder } from "discord.js";
 import { tournamentChannel } from "./channel.ts";
 import { env } from "./env.ts";
+import { wonByForfeit } from "./logic/forfeit.ts";
 import type { StandingRow } from "./logic/roundrobin.ts";
 import { describeSeries, seriesState, type SeriesState } from "./logic/series.ts";
 import { otherTeam, type Team } from "./logic/teams.ts";
@@ -24,6 +25,7 @@ import {
 import { BRACKET_FILE, renderBracketImage, type BracketMatch, type BracketSlot } from "./render/bracket-image.ts";
 import { renderGroupsImage, renderStandingsImage, type UpcomingMatch } from "./render/standings-image.ts";
 import {
+  droppedPlayers,
   getTournament,
   groupStandings,
   leagueStandings,
@@ -142,18 +144,36 @@ export async function seriesUpdate(match: Match, series: SeriesState, title: str
   };
 }
 
+/**
+ * The team a champion is pictured in: the one they had in the last match they played. A
+ * final won by forfeit never went live, so it has no teams; if they never played at all
+ * (every match a forfeit), Goons.
+ */
+function championTeam(matches: readonly Match[], championId: string): Team {
+  const played = matches.filter((m) => m.p1_team && (m.p1_id === championId || m.p2_id === championId)).at(-1);
+  return played ? teamIn(played, championId) : "goons";
+}
+
 /** Crowns the champion with a summary of every match, pinging only the champion (nobody in dev mode). */
 export async function announceChampion(tournamentId: number, championId: string): Promise<void> {
   const matches = listMatches(tournamentId);
-  const final = matches.at(-1)!;
   const results = matches.map(resultLineFor);
 
   const champion = await embedPlayer(championId);
   await tournamentChannel().send({
     content: `🏆 <@${championId}> wins the tournament!`,
     embeds: [championEmbed({ champion, runnerUpName: runnerUpOf(matches), results })],
-    files: [await winnerImage(champion, teamIn(final, championId))],
+    files: [await winnerImage(champion, championTeam(matches, championId))],
     allowedMentions: { users: env.devCommands ? [] : [championId] },
+  });
+}
+
+/** Posts the matches just decided by forfeit, one result line each ("Final: **C** def. A (forfeit)"). */
+export async function announceForfeits(matches: readonly Match[]): Promise<void> {
+  if (matches.length === 0) return;
+  await tournamentChannel().send({
+    content: matches.map((m) => `🏳️ ${resultLineFor(m)}`).join("\n"),
+    allowedMentions: { parse: [] },
   });
 }
 
@@ -180,6 +200,7 @@ export async function bracketImage(tournamentId: number): Promise<AttachmentBuil
   const { format } = tournament;
   const matches = listMatches(tournamentId);
   const seeds = new Map(listTournamentPlayers(tournamentId).map((p, i) => [p.discord_id, i + 1]));
+  const dropped = droppedPlayers(tournamentId);
 
   // Everyone in the tournament (the champion is among them).
   const avatars = await avatarsFor([...seeds.keys()]);
@@ -208,6 +229,7 @@ export async function bracketImage(tournamentId: number): Promise<AttachmentBuil
       seed,
       score,
       won: id !== null && match.winner_id === id,
+      forfeited: id !== null && match.winner_id !== null && match.winner_id !== id && wonByForfeit(match, games),
     };
   };
   const card = (m: Match): BracketMatch => ({ label: m.label, bestOf: m.best_of, status: m.status, p1: slot(m, "p1"), p2: slot(m, "p2") });
@@ -223,6 +245,7 @@ export async function bracketImage(tournamentId: number): Promise<AttachmentBuil
       losses: row.losses,
       goalsFor: row.goalsFor,
       goalsAgainst: row.goalsAgainst,
+      dropped: dropped.has(row.playerId),
     }));
 
   let png: Uint8Array;
