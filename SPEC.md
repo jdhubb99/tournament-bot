@@ -272,7 +272,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 - Round robin gets a standings table image, with the top-2 final matchup shown once the league is done
 - Groups format gets two small standings tables plus the semis/final bracket
 - 8-player bracket layout (quarters → semis → final)
-- After each match, **edit** the existing bracket message (`bracket_msg_id`) instead of posting a new one
+- After each match, **edit** the existing bracket message (`bracket_msg_id`) instead of posting a new one. The live bracket is posted when a tournament starts, just before the first "Up next". It's edited after every report (so a best of 3's dots stay current), every undo, and a cancel (title marked "(cancelled)"). If it was deleted, a fresh one is posted. A failed update is logged and never blocks the report
 - Keep rendering isolated in `render/` so it can be swapped without touching logic
 
 ## Phases
@@ -336,7 +336,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 - [x] SVG bracket layout for single elim (4 and 8 players, in `render/bracket-image.ts`): match cards with avatars ringed in team colors, seeds, scores (goals as numbers for a best of 1; games won as dots for a best of 3 or 5, with a key under the bracket when it mixes both), the live match outlined in red, the winning row marked in its team color, and the champion in gold
 - [x] PNG conversion, avatars, bundled font
 - [x] Standings image for round robin (built in phase 5 along with the format)
-- [ ] Edit-in-place bracket message after each match
+- [x] Edit-in-place bracket message after each match
 
 ### Phase 9 — Hosting
 - [ ] Register commands globally
