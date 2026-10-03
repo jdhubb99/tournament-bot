@@ -253,7 +253,7 @@ Round robin and group matches have no `next_match_id`. Playoff rows (quarters' s
 - Head-to-head between any two players (series and games)
 - All queries accept an optional `game` filter; default is Rocket League. It matches ignoring case.
 - Stats count every decided match from finished and in-progress tournaments. Cancelled tournaments don't count.
-- `/leaderboard` ranks everyone who has played by titles, then series wins, then game difference, then goal difference, then fewest series losses. It shows up to 15 players as an image (titles, series W-L, games W-L, GD) and says how many there are when there are more.
+- `/leaderboard` ranks everyone who has played by titles, then series wins, then game difference, then goal difference, then fewest series losses. It shows up to 15 players as an image (titles, series W-L, games W-L, GD; the top 3 in gold, silver and bronze) and says how many there are when there are more.
 - `/stats [player] [game]` defaults to yourself. It shows a profile card (avatar ringed in gold if they've won a title, titles, series, games, and goals with goal difference) above their head-to-head record against each opponent, most-played first.
 
 ## Visuals
