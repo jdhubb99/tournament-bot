@@ -122,12 +122,38 @@ describe("signup buttons", () => {
     expect(getTournament(id)?.status).toBe("signup");
   });
 
-  it("refuses player counts whose format isn't built yet", async () => {
+  it("starts 6 and 7 players as two groups with empty playoffs", async () => {
+    for (const count of [6, 7]) {
+      resetDb();
+      const id = await startSignup();
+      await joinPlayers(id, count);
+      await press("start", id);
+      expect(getTournament(id)).toMatchObject({ status: "active", format: "groups" });
+      const matches = listMatches(id);
+      expect(matches).toHaveLength(count === 6 ? 9 : 12);
+      expect(matches.slice(-3).map((m) => [m.label, m.p1_id, m.p2_id])).toEqual([
+        ["Semifinal 1", null, null],
+        ["Semifinal 2", null, null],
+        ["Final", null, null],
+      ]);
+      expect(getLiveMatch(id)?.label).toBe("Group A - Match 1");
+      const labels = db
+        .query<{ group_label: string }, { t: number }>("SELECT group_label FROM tournament_players WHERE tournament_id = $t")
+        .all({ t: id })
+        .map((r) => r.group_label)
+        .sort()
+        .join("");
+      expect(labels).toBe(count === 6 ? "AAABBB" : "AAAABBB");
+    }
+  });
+
+  it("starts 8 players as a knockout with quarterfinals", async () => {
     const id = await startSignup();
-    await joinPlayers(id, 6);
-    const interaction = await press("start", id);
-    expect(arg(interaction.reply).content).toBe("Only 4 or 5 player tournaments are supported so far (6 joined).");
-    expect(getTournament(id)?.status).toBe("signup");
+    await joinPlayers(id, 8);
+    await press("start", id);
+    expect(getTournament(id)).toMatchObject({ status: "active", format: "single_elim" });
+    expect(listMatches(id)).toHaveLength(7);
+    expect(getLiveMatch(id)?.label).toBe("Quarterfinal 1");
   });
 
   it("starts 5 players as a round robin with an empty final and announces Match 1", async () => {

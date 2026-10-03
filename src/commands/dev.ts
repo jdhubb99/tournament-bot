@@ -1,6 +1,7 @@
 import { MessageFlags, SlashCommandBuilder, type ChatInputCommandInteraction } from "discord.js";
 import { cancelTournament, getOpenTournament, listTournamentPlayers } from "../store.ts";
-import { joinSignup, MAX_PLAYERS, type JoinResult } from "./tournament.ts";
+import { MAX_PLAYERS } from "../logic/format.ts";
+import { joinSignup, type JoinResult } from "./tournament.ts";
 import type { Command } from "./types.ts";
 
 type Interaction = ChatInputCommandInteraction<"cached">;

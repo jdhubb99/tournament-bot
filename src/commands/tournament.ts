@@ -10,6 +10,8 @@ import {
 import { announceLiveMatch } from "../announce.ts";
 import { tournamentChannel } from "../channel.ts";
 import { singleElim } from "../logic/bracket.ts";
+import { formatFor, MAX_PLAYERS, MIN_PLAYERS } from "../logic/format.ts";
+import { groupsPlan } from "../logic/groups.ts";
 import { shuffle } from "../logic/random.ts";
 import { roundRobinPlan } from "../logic/roundrobin.ts";
 import { randomTeam } from "../logic/teams.ts";
@@ -28,8 +30,6 @@ import {
 } from "../store.ts";
 import type { Command } from "./types.ts";
 
-const MIN_PLAYERS = 4;
-export const MAX_PLAYERS = 8;
 const SERIES_CHOICES = [1, 3, 5].map((n) => ({ name: `Best of ${n}`, value: n }));
 
 const ephemeral = (content: string) => ({ content, flags: MessageFlags.Ephemeral }) as const;
@@ -92,18 +92,17 @@ async function begin(interaction: ButtonInteraction<"cached">, tournament: Tourn
     await interaction.reply(ephemeral(`At least ${MIN_PLAYERS} players are needed to start (${players.length} joined).`));
     return;
   }
-  // TODO(phase 6): groups for 6–7 players, single elim for 8.
-  if (players.length > 5) {
-    await interaction.reply(ephemeral(`Only 4 or 5 player tournaments are supported so far (${players.length} joined).`));
-    return;
-  }
-
+  // Join caps signup at MAX_PLAYERS and fewer than MIN_PLAYERS was refused above, so there's a format.
+  const format = formatFor(players.length)!;
   const seeded = shuffle(players.map((p) => p.discord_id));
-  if (players.length === 4) {
-    const plan = singleElim(seeded, { semis: tournament.semis_best_of, final: tournament.final_best_of });
-    startTournament(tournament.id, "single_elim", seeded, plan, randomTeam());
+  const lengths = { semis: tournament.semis_best_of, final: tournament.final_best_of };
+  if (format === "single_elim") {
+    startTournament(tournament.id, format, seeded, singleElim(seeded, lengths), randomTeam());
+  } else if (format === "round_robin") {
+    startTournament(tournament.id, format, seeded, roundRobinPlan(seeded, lengths.final), randomTeam());
   } else {
-    startTournament(tournament.id, "round_robin", seeded, roundRobinPlan(seeded, tournament.final_best_of), randomTeam());
+    const { plan, groups } = groupsPlan(seeded, lengths);
+    startTournament(tournament.id, format, seeded, plan, randomTeam(), groups);
   }
 
   await interaction.update(signupMessage(tournament, true));
