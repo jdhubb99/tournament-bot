@@ -5,6 +5,7 @@ import type { PlannedMatch, SeriesLengths } from "./logic/bracket.ts";
 import type { Format } from "./logic/format.ts";
 import { semifinalPairs, type GroupLabel } from "./logic/groups.ts";
 import { allMatchesDone, nextMatchToPlay } from "./logic/queue.ts";
+import type { MatchRecord } from "./logic/stats.ts";
 import { standings, type StandingRow } from "./logic/roundrobin.ts";
 import { seriesState, type SeriesState } from "./logic/series.ts";
 import type { Team } from "./logic/teams.ts";
@@ -425,4 +426,34 @@ function fillPlayoffsFromStandings(tournamentId: number): boolean {
     semifinalPairs(ids(tables.A), ids(tables.B)).forEach(([p1, p2], i) => fill.run({ p1, p2, id: targets[i]!.id }));
   }
   return true;
+}
+
+export const DEFAULT_GAME = "Rocket League";
+
+/**
+ * Every decided match in the guild's finished or in-progress tournaments of a game
+ * (case-insensitive), with its games, for /leaderboard and /stats. Cancelled tournaments
+ * don't count.
+ */
+export function decidedMatches(guildId: string, game = DEFAULT_GAME): MatchRecord[] {
+  return db
+    .query<Match, { g: string; game: string }>(
+      `SELECT m.* FROM matches m JOIN tournaments t ON t.id = m.tournament_id
+       WHERE t.guild_id = $g AND t.game = $game COLLATE NOCASE AND t.status IN ('active', 'done') AND m.status = 'done'
+       ORDER BY m.id`,
+    )
+    .all({ g: guildId, game })
+    .map((m) => ({ p1: m.p1_id!, p2: m.p2_id!, winner: m.winner_id!, games: listGames(m.id) }));
+}
+
+/** Titles per player: finished tournaments of a game (case-insensitive) each player won. */
+export function titleCounts(guildId: string, game = DEFAULT_GAME): Map<string, number> {
+  const rows = db
+    .query<{ winner_id: string; n: number }, { g: string; game: string }>(
+      `SELECT winner_id, count(*) AS n FROM tournaments
+       WHERE guild_id = $g AND game = $game COLLATE NOCASE AND status = 'done'
+       GROUP BY winner_id`,
+    )
+    .all({ g: guildId, game });
+  return new Map(rows.map((r) => [r.winner_id, r.n]));
 }

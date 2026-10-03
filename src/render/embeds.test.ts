@@ -4,6 +4,7 @@ import {
   championEmbed,
   historyEmbed,
   standingsEmbed,
+  statsEmbed,
   liveMatchEmbed,
   matchResultEmbed,
   resultLine,
@@ -155,5 +156,18 @@ describe("standingsEmbed", () => {
       title: "Final group tables",
       image: { url: "attachment://bracket.png" },
     });
+  });
+});
+
+describe("statsEmbed", () => {
+  it("shows the attached image with an optional note", () => {
+    expect(statsEmbed("Leaderboard — Rocket League", "leaderboard.png").toJSON()).toMatchObject({
+      title: "Leaderboard — Rocket League",
+      image: { url: "attachment://leaderboard.png" },
+    });
+    expect(statsEmbed("T", "x.png").toJSON().description).toBeUndefined();
+    expect(statsEmbed("T", "x.png", "Showing the top 15 of 20 players.").toJSON().description).toBe(
+      "Showing the top 15 of 20 players.",
+    );
   });
 });

@@ -75,6 +75,7 @@ export function fakeInteraction(opts: {
   commandName?: string;
   subcommand?: string;
   integers?: Record<string, number>;
+  strings?: Record<string, string>;
   customId?: string;
   channelId?: string;
   user?: { id: string; name: string };
@@ -97,6 +98,7 @@ export function fakeInteraction(opts: {
     options: {
       getSubcommand: () => opts.subcommand ?? "start",
       getInteger: (name: string) => opts.integers?.[name] ?? null,
+      getString: (name: string) => opts.strings?.[name] ?? null,
       getUser: (name: string) => {
         const user = opts.optionUsers?.[name];
         return user ? { id: user.id, displayName: user.name } : null;

@@ -35,11 +35,18 @@ export interface StandingsImageRow {
   goalsAgainst: number;
 }
 
-const TABLE_W = 620;
+export const TABLE_W = 620;
 const HEADER_H = 40;
 const ROW_H = 52;
 const KEY_H = 40;
-const QUALIFY = 2;
+/** Rows to mark at the top of a table, one color each, optionally with a cutoff line below them. */
+export interface Highlight {
+  colors: readonly string[];
+  cutoff: boolean;
+}
+
+/** League and group tables: the top 2 move on, in gold above a gold cutoff line. */
+const QUALIFIERS: Highlight = { colors: [GOLD, GOLD], cutoff: true };
 const UP_NEXT_HEADER_H = 44;
 const UP_NEXT_LINE_H = 34;
 const UP_NEXT_NAMES_X = 190;
@@ -54,48 +61,63 @@ export interface UpcomingMatch {
   live: boolean;
 }
 
-/** Column x positions (relative to the table's left edge) for the numeric columns. */
-const COLUMNS = [
-  { label: "P", x: 340, value: (r: StandingsImageRow) => String(r.played) },
-  { label: "W", x: 390, value: (r: StandingsImageRow) => String(r.wins) },
-  { label: "L", x: 440, value: (r: StandingsImageRow) => String(r.losses) },
-  { label: "Goals", x: 515, value: (r: StandingsImageRow) => `${r.goalsFor}-${r.goalsAgainst}` },
-  {
-    label: "GD",
-    x: 585,
-    value: (r: StandingsImageRow) => {
-      const diff = r.goalsFor - r.goalsAgainst;
-      return diff > 0 ? `+${diff}` : String(diff);
-    },
-  },
+/** A numeric column: its header, its center x relative to the table's left edge, and how to show a row's value. */
+export interface Column<T> {
+  label: string;
+  x: number;
+  value: (row: T) => string;
+}
+
+/** "+3", "0", "-2". */
+export const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
+
+/** The league and group table columns. */
+const STANDINGS_COLUMNS: Column<StandingsImageRow>[] = [
+  { label: "P", x: 340, value: (r) => String(r.played) },
+  { label: "W", x: 390, value: (r) => String(r.wins) },
+  { label: "L", x: 440, value: (r) => String(r.losses) },
+  { label: "Goals", x: 515, value: (r) => `${r.goalsFor}-${r.goalsAgainst}` },
+  { label: "GD", x: 585, value: (r) => signed(r.goalsFor - r.goalsAgainst) },
 ];
 
 type UpNext = { matches: readonly UpcomingMatch[]; more: number };
 const NOTHING_UP_NEXT: UpNext = { matches: [], more: 0 };
 
 /**
- * A titled table ("League", "Group A") with its top-left corner at (x, top). The first
- * QUALIFY rows are marked in gold above a gold cutoff line. Returns the SVG and its height.
+ * A titled table ("League", "Group A") with its top-left corner at (x, top): rank (unless
+ * `ranked` is false), avatar and name, then `columns`. The first rows are marked in
+ * `highlight.colors` (rank, a bar on the left, and the avatar ring), one color per row,
+ * with a line in the last color below them if `highlight.cutoff`. Returns the SVG and its height.
  */
-export function layoutTable(x: number, top: number, title: string, rows: readonly StandingsImageRow[], id: string): { svg: string; height: number } {
+export function layoutTable<T extends { name: string; avatar: Uint8Array | null }>(
+  x: number,
+  top: number,
+  title: string,
+  rows: readonly T[],
+  id: string,
+  columns: readonly Column<T>[],
+  highlight: Highlight,
+  ranked = true,
+): { svg: string; height: number } {
   const tableTop = top + HEADER_H;
   const parts: string[] = [text(x, tableTop - 14, title, { size: 20, fill: MUTED })];
-  for (const column of COLUMNS) parts.push(text(x + column.x, tableTop - 14, column.label, { size: 20, fill: MUTED, anchor: "middle" }));
+  for (const column of columns) parts.push(text(x + column.x, tableTop - 14, column.label, { size: 20, fill: MUTED, anchor: "middle" }));
   parts.push(`<rect x="${x}" y="${tableTop}" width="${TABLE_W}" height="${rows.length * ROW_H}" rx="8" fill="${CARD}"/>`);
 
   rows.forEach((row, i) => {
     const y = tableTop + i * ROW_H;
     const mid = y + ROW_H / 2;
     if (i > 0) {
-      const cutoff = i === QUALIFY;
-      parts.push(`<line x1="${x}" y1="${y}" x2="${x + TABLE_W}" y2="${y}" stroke="${cutoff ? GOLD : DIVIDER}" stroke-width="${cutoff ? 3 : 2}"/>`);
+      const cutoff = highlight.cutoff && i === highlight.colors.length;
+      const stroke = cutoff ? highlight.colors.at(-1)! : DIVIDER;
+      parts.push(`<line x1="${x}" y1="${y}" x2="${x + TABLE_W}" y2="${y}" stroke="${stroke}" stroke-width="${cutoff ? 3 : 2}"/>`);
     }
-    const qualified = i < QUALIFY;
-    if (qualified) parts.push(`<rect x="${x}" y="${y + 8}" width="5" height="${ROW_H - 16}" rx="2" fill="${GOLD}"/>`);
-    parts.push(text(x + 30, mid + 9, String(i + 1), { size: 26, fill: qualified ? GOLD : MUTED, anchor: "middle" }));
-    parts.push(avatarCircle(`${id}${i}`, x + 72, mid, 16, row.avatar, qualified ? GOLD : DIM, 3));
+    const color = highlight.colors[i];
+    if (color) parts.push(`<rect x="${x}" y="${y + 8}" width="5" height="${ROW_H - 16}" rx="2" fill="${color}"/>`);
+    if (ranked) parts.push(text(x + 30, mid + 9, String(i + 1), { size: 26, fill: color ?? MUTED, anchor: "middle" }));
+    parts.push(avatarCircle(`${id}${i}`, x + 72, mid, 16, row.avatar, color ?? DIM, 3));
     parts.push(text(x + 100, mid + 9, truncate(row.name, 16), { size: 26, fill: TEXT }));
-    for (const column of COLUMNS) parts.push(text(x + column.x, mid + 9, column.value(row), { size: 26, fill: TEXT, anchor: "middle" }));
+    for (const column of columns) parts.push(text(x + column.x, mid + 9, column.value(row), { size: 26, fill: TEXT, anchor: "middle" }));
   });
   return { svg: parts.join(""), height: HEADER_H + rows.length * ROW_H };
 }
@@ -123,7 +145,7 @@ export function layoutUpNext(x: number, top: number, upNext: UpNext): { svg: str
   return { svg: parts.join(""), height: UP_NEXT_HEADER_H + lines * UP_NEXT_LINE_H + UP_NEXT_PAD * 2 };
 }
 
-const svgDoc = (width: number, height: number, body: string) =>
+export const svgDoc = (width: number, height: number, body: string) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${body}</svg>`;
 
 /**
@@ -137,7 +159,7 @@ export function renderStandingsImage(
   upNext: UpNext = NOTHING_UP_NEXT,
 ): Uint8Array {
   const x = PAD;
-  const table = layoutTable(x, PAD, "League", rows, "s");
+  const table = layoutTable(x, PAD, "League", rows, "s", STANDINGS_COLUMNS, QUALIFIERS);
   const keyBottom = PAD + table.height + KEY_H;
   const list = layoutUpNext(x, keyBottom, upNext);
   const width = PAD + TABLE_W + COL_GAP + CARD_W + COL_GAP + CHAMPION_W + PAD;
@@ -173,8 +195,8 @@ export function renderGroupsImage(
   upNext: UpNext = NOTHING_UP_NEXT,
 ): Uint8Array {
   const x = PAD;
-  const tableA = layoutTable(x, PAD, "Group A", groups.A, "a");
-  const tableB = layoutTable(x, PAD + tableA.height + GROUP_GAP, "Group B", groups.B, "b");
+  const tableA = layoutTable(x, PAD, "Group A", groups.A, "a", STANDINGS_COLUMNS, QUALIFIERS);
+  const tableB = layoutTable(x, PAD + tableA.height + GROUP_GAP, "Group B", groups.B, "b", STANDINGS_COLUMNS, QUALIFIERS);
   const tablesBottom = PAD + tableA.height + GROUP_GAP + tableB.height;
   const keyBottom = tablesBottom + KEY_H;
   const list = layoutUpNext(x, keyBottom, upNext);

@@ -429,3 +429,36 @@ describe("6, 7 and 8 players start to finish", () => {
     expect(store.getTournament(id)).toMatchObject({ status: "done", winner_id: "a" });
   });
 });
+
+describe("stats queries", () => {
+  it("returns decided matches with their games, from active and finished tournaments only", () => {
+    const active = startedTournament();
+    store.recordGame(store.getLiveMatch(active)!, 3, 1, "r", "goons"); // a beats b
+    const cancelled = startedTournament();
+    store.recordGame(store.getLiveMatch(cancelled)!, 1, 0, "r", "goons");
+    store.cancelTournament(cancelled);
+
+    expect(store.decidedMatches("guild-1")).toEqual([
+      { p1: "a", p2: "b", winner: "a", games: [expect.objectContaining({ p1_score: 3, p2_score: 1 })] },
+    ]);
+    expect(store.decidedMatches("guild-2")).toEqual([]);
+  });
+
+  it("filters by game, ignoring case", () => {
+    const id = startedTournament();
+    store.recordGame(store.getLiveMatch(id)!, 3, 1, "r", "goons");
+    expect(store.decidedMatches("guild-1", "rocket league")).toHaveLength(1);
+    expect(store.decidedMatches("guild-1", "Mario Kart")).toEqual([]);
+  });
+
+  it("counts titles per player for finished tournaments of the game", () => {
+    for (const winner of ["a", "b", "a"]) {
+      const id = startedTournament({ semis: 1, final: 1 });
+      playToTheEnd(id);
+      db.query("UPDATE tournaments SET winner_id = $w WHERE id = $id").run({ w: winner, id });
+    }
+    db.query("UPDATE tournaments SET game = 'Mario Kart' WHERE id = (SELECT max(id) FROM tournaments)").run();
+    expect(store.titleCounts("guild-1")).toEqual(new Map([["a", 1], ["b", 1]]));
+    expect(store.titleCounts("guild-1", "mario kart")).toEqual(new Map([["a", 1]]));
+  });
+});
