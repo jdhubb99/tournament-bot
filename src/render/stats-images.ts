@@ -1,6 +1,6 @@
 import { avatarCircle, CARD, DIM, GOLD, MUTED, PAD, text, TEXT, truncate } from "./bracket-image.ts";
 import { toPng } from "./match-images.ts";
-import { layoutTable, signed, svgDoc, TABLE_W, type Column } from "./standings-image.ts";
+import { layoutTable, signed, svgDoc, TABLE_W, type Column, type Highlight } from "./standings-image.ts";
 
 /** A player's record, as /leaderboard and /stats show it. */
 export interface RecordRow {
@@ -37,12 +37,19 @@ const HEAD_TO_HEAD_COLUMNS: Column<RecordRow>[] = [
   { label: "GD", x: 585, value: (r) => signed(r.goalsFor - r.goalsAgainst) },
 ];
 
+const SILVER = "#c0c6cf";
+const BRONZE = "#cd7f32";
+
+/** Gold, silver and bronze for the top 3, with no cutoff line (nobody is qualifying for anything). */
+const MEDALS: Highlight = { colors: [GOLD, SILVER, BRONZE], cutoff: false };
+const NO_HIGHLIGHT: Highlight = { colors: [], cutoff: false };
+
 const PROFILE_H = 128;
 const SECTION_GAP = 24;
 
-/** /leaderboard: every ranked player's titles, series and game records, and goal difference. */
+/** /leaderboard: every ranked player's titles, series and game records, and goal difference, top 3 in medal colors. */
 export function renderLeaderboardImage(game: string, rows: readonly LeaderboardRow[]): Uint8Array {
-  const table = layoutTable(PAD, PAD, game, rows, "l", LEADERBOARD_COLUMNS, 0);
+  const table = layoutTable(PAD, PAD, game, rows, "l", LEADERBOARD_COLUMNS, MEDALS);
   const width = PAD + TABLE_W + PAD;
   return toPng(svgDoc(width, PAD + table.height + PAD, table.svg));
 }
@@ -67,7 +74,7 @@ export function renderPlayerStatsImage(player: LeaderboardRow, opponents: readon
 
   const tableTop = PAD + PROFILE_H + SECTION_GAP;
   // Sorted by most-played opponent, so a rank number would mislead.
-  const table = layoutTable(x, tableTop, "Head-to-head", opponents, "h", HEAD_TO_HEAD_COLUMNS, 0, false);
+  const table = layoutTable(x, tableTop, "Head-to-head", opponents, "h", HEAD_TO_HEAD_COLUMNS, NO_HIGHLIGHT, false);
   const width = PAD + TABLE_W + PAD;
   return toPng(svgDoc(width, tableTop + table.height + PAD, profile + table.svg));
 }

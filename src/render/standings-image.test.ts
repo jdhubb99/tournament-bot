@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { BracketMatch, BracketSlot } from "./bracket-image.ts";
-import { renderGroupsImage, renderStandingsImage, type StandingsImageRow } from "./standings-image.ts";
+import { layoutTable, renderGroupsImage, renderStandingsImage, type StandingsImageRow } from "./standings-image.ts";
 
 const size = (png: Uint8Array) => {
   const view = new DataView(png.buffer, png.byteOffset);
@@ -90,5 +90,27 @@ describe("renderGroupsImage", () => {
     const upNext = { matches: [{ label: "Group A - Match 5", p1: "A", p2: "B", live: true }], more: 0 };
     expect(size(renderGroupsImage(groups, playoffs, null, upNext)).height).toBe(588 + 44 + 34 + 20);
     expect(same(renderGroupsImage(groups, playoffs, null), renderGroupsImage(groups, playoffs, { name: "A", avatar: null }))).toBe(false);
+  });
+});
+
+describe("layoutTable highlights", () => {
+  const columns = [{ label: "W", x: 300, value: (r: StandingsImageRow) => String(r.wins) }];
+
+  it("colors each highlighted row and draws the cutoff line in the last color", () => {
+    const { svg } = layoutTable(0, 0, "T", rows, "t", columns, { colors: ["#111111", "#222222"], cutoff: true });
+    expect(svg.match(/#111111/g)?.length).toBe(3); // bar, rank, ring
+    expect(svg.match(/#222222/g)?.length).toBe(4); // bar, rank, ring, cutoff line
+  });
+
+  it("leaves out the cutoff line when asked", () => {
+    const { svg } = layoutTable(0, 0, "T", rows, "t", columns, { colors: ["#aaaaaa", "#bbbbbb", "#cccccc"], cutoff: false });
+    expect([/#aaaaaa/g, /#bbbbbb/g, /#cccccc/g].map((re) => svg.match(re)?.length)).toEqual([3, 3, 3]);
+  });
+
+  it("can hide the rank numbers", () => {
+    const ranked = layoutTable(0, 0, "T", rows, "t", columns, { colors: [], cutoff: false }).svg;
+    const unranked = layoutTable(0, 0, "T", rows, "t", columns, { colors: [], cutoff: false }, false).svg;
+    expect(ranked.includes(">5</text>")).toBe(true);
+    expect(unranked.length).toBeLessThan(ranked.length);
   });
 });
