@@ -1,0 +1,29 @@
+# Runs the bot and a daily database backup. See "Hosting" in README.md.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  bot:
+    build: .
+    image: tournament-bot
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    logging: *logging
+
+  # Snapshots data/bot.db into backups/ once a day, keeping the newest BACKUP_KEEP (default 14).
+  # Safe while the bot is running.
+  backup:
+    build: .
+    image: tournament-bot
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./backups:/app/backups
+    command: ["sh", "-c", "while true; do bun src/backup-now.ts; sleep 86400; done"]
+    logging: *logging
