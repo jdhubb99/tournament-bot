@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { db } from "./db.ts";
 import { singleElim } from "./logic/bracket.ts";
+import { isOut, wonByForfeit } from "./logic/forfeit.ts";
 import * as store from "./store.ts";
 import {
   playLeague,
@@ -498,5 +499,200 @@ describe("stats queries", () => {
     db.query("UPDATE tournaments SET game = 'Mario Kart' WHERE id = (SELECT max(id) FROM tournaments)").run();
     expect(store.titleCounts("guild-1")).toEqual(new Map([["a", 1], ["b", 1]]));
     expect(store.titleCounts("guild-1", "mario kart")).toEqual(new Map([["a", 1]]));
+  });
+});
+
+describe("forfeits", () => {
+  const live = (id: number) => store.getLiveMatch(id)!;
+  const byLabel = (id: number, label: string) => store.listMatches(id).find((m) => m.label === label)!;
+  /** Reports the live match's next game, the alphabetically earlier player winning 2–1. */
+  const play = (id: number) => {
+    const m = live(id);
+    const p1Wins = m.p1_id! < m.p2_id!;
+    return store.recordGame(m, p1Wins ? 2 : 1, p1Wins ? 1 : 2, "r", "goons");
+  };
+  const forfeited = (m: store.Match) => wonByForfeit(m, store.listGames(m.id));
+
+  it("ends the live match in the opponent's favour and puts the next one live", () => {
+    const id = startedTournament();
+    const outcome = store.forfeitPlayer(id, "a", "gooners");
+    expect(outcome.forfeits.map((m) => [m.label, m.winner_id])).toEqual([["Semifinal 1", "b"]]);
+    expect(forfeited(byLabel(id, "Semifinal 1"))).toBe(true);
+    expect(byLabel(id, "Final").p1_id).toBe("b");
+    expect(outcome.next).toMatchObject({ label: "Semifinal 2", status: "live", p1_team: "gooners" });
+    expect(outcome).toMatchObject({ championId: null, stageFinished: false });
+    expect(store.droppedPlayers(id)).toEqual(new Set(["a"]));
+  });
+
+  it("keeps the games already played in a forfeited series", () => {
+    const id = startedTournament({ semis: 3, final: 3 });
+    store.recordGame(live(id), 2, 1, "r", "goons"); // a leads 1–0
+    store.forfeitPlayer(id, "a", "goons");
+    const semi = byLabel(id, "Semifinal 1");
+    expect(semi).toMatchObject({ status: "done", winner_id: "b" });
+    expect(store.listGames(semi.id)).toHaveLength(1);
+    expect(forfeited(semi)).toBe(true);
+  });
+
+  it("records the newest game at the time of dropping", () => {
+    const id = startedTournament();
+    store.forfeitPlayer(id, "c", "goons");
+    const game = play(id).game;
+    store.forfeitPlayer(id, "b", "goons");
+    const rows = db.query("SELECT player_id, dropped_after_game FROM tournament_players WHERE dropped_after_game IS NOT NULL ORDER BY player_id").all();
+    expect(rows).toEqual([
+      { player_id: "b", dropped_after_game: game.id },
+      { player_id: "c", dropped_after_game: 0 },
+    ]);
+  });
+
+  it("decides a waiting match once its other player is known", () => {
+    const id = startedTournament();
+    play(id); // a wins Semifinal 1 and waits in the final
+    const dropped = store.forfeitPlayer(id, "a", "goons");
+    expect(dropped).toEqual({ next: null, championId: null, stageFinished: false, forfeits: [] });
+    expect(live(id).label).toBe("Semifinal 2");
+
+    const outcome = play(id); // c wins Semifinal 2, then the final is a forfeit
+    expect(outcome.forfeits.map((m) => [m.label, m.winner_id])).toEqual([["Final", "c"]]);
+    expect(outcome).toMatchObject({ championId: "c", next: null });
+    expect(store.getTournament(id)).toMatchObject({ status: "done", winner_id: "c" });
+  });
+
+  it("decides a knockout match with both players known right away, leaving the live one alone", () => {
+    const id = startedEight();
+    const outcome = store.forfeitPlayer(id, "d", "goons");
+    expect(outcome.forfeits.map((m) => [m.label, m.winner_id])).toEqual([["Quarterfinal 2", "c"]]);
+    expect(outcome.next).toBeNull();
+    expect(byLabel(id, "Semifinal 1").p2_id).toBe("c");
+    expect(live(id).label).toBe("Quarterfinal 1");
+  });
+
+  it("forfeits every league match left and keeps the dropped player out of the final", () => {
+    const id = startedRoundRobin();
+    const outcome = store.forfeitPlayer(id, "b", "goons");
+    expect(outcome.forfeits.map((m) => m.winner_id).sort()).toEqual(["a", "c", "d", "e"]);
+    while (live(id).round === 1) play(id);
+    // b won nothing but has the fewest games; dropped players go last however they did.
+    expect(store.leagueStandings(id).at(-1)!.playerId).toBe("b");
+    expect(byLabel(id, "Final")).toMatchObject({ p1_id: "a", p2_id: "c", status: "live" });
+  });
+
+  it("puts dropped players at the bottom of the table even if they were winning", () => {
+    const id = startedRoundRobin();
+    while (store.listMatches(id).filter((m) => m.status === "done").length < 4) play(id);
+    const leader = store.leagueStandings(id)[0]!.playerId;
+    store.forfeitPlayer(id, leader, "goons");
+    expect(store.leagueStandings(id).at(-1)!.playerId).toBe(leader);
+  });
+
+  it("gives a dropped player's playoff place to the next in the table, or forfeits it when nobody's left", () => {
+    const id = startedGroups(6); // Group A: a, b, c. Group B: d, e, f
+    store.forfeitPlayer(id, "b", "goons");
+    store.forfeitPlayer(id, "c", "goons");
+    let last!: store.GameOutcome;
+    while (live(id).round === 1) last = play(id);
+    // A2 is a dropped player, so Semifinal 2 (B1 vs A2) is a forfeit as soon as it's filled.
+    expect(last.stageFinished).toBe(true);
+    expect(last.forfeits.map((m) => [m.label, m.winner_id])).toEqual([["Semifinal 2", "d"]]);
+    expect(byLabel(id, "Final").p2_id).toBe("d");
+    expect(last.next).toMatchObject({ label: "Semifinal 1", p1_id: "a", p2_id: "e" });
+  });
+
+  it("finishes every format with a champion who didn't drop, whoever drops and whenever", () => {
+    const starts = { 4: startedTournament, 5: startedRoundRobin, 6: () => startedGroups(6), 7: () => startedGroups(7), 8: startedEight };
+    for (const [count, start] of Object.entries(starts)) {
+      for (let victim = 0; victim < Number(count); victim++) {
+        for (let after = 0; after < 14; after++) {
+          resetDb();
+          const id = start();
+          const player = "abcdefgh"[victim]!;
+          for (let i = 0; i < after && store.getTournament(id)!.status === "active"; i++) play(id);
+          const t = store.getTournament(id)!;
+          if (t.status !== "active" || isOut(player, store.listMatches(id), t.format)) continue;
+          store.forfeitPlayer(id, player, "goons");
+          playToTheEnd(id);
+          const winner = store.getTournament(id)!.winner_id;
+          expect(winner === null || winner === player ? `${count} players, ${player} dropped after ${after}` : "ok").toBe("ok");
+        }
+      }
+    }
+  });
+
+  it("finishes with the last player standing when everyone else drops", () => {
+    for (const start of [startedTournament, startedRoundRobin, () => startedGroups(7), startedEight]) {
+      resetDb();
+      const id = start();
+      const players = store.listTournamentPlayers(id).map((p) => p.discord_id);
+      for (const player of players.slice(1)) {
+        const t = store.getTournament(id)!;
+        if (t.status !== "active") break;
+        if (!isOut(player, store.listMatches(id), t.format)) store.forfeitPlayer(id, player, "goons");
+        const now = store.getLiveMatch(id);
+        if (now) expect([now.p1_id, now.p2_id].some((p) => store.droppedPlayers(id).has(p!))).toBe(false);
+        if (store.getTournament(id)!.status === "active") play(id);
+      }
+      playToTheEnd(id);
+      expect(store.droppedPlayers(id).has(store.getTournament(id)!.winner_id!)).toBe(false);
+    }
+  });
+
+  describe("and undo", () => {
+    it("knows when a player dropped after the newest game", () => {
+      const id = startedTournament();
+      expect(store.droppedSinceLastGame(id)).toBeNull();
+      store.forfeitPlayer(id, "d", "goons");
+      expect(store.droppedSinceLastGame(id)).toBe("d");
+      play(id);
+      expect(store.droppedSinceLastGame(id)).toBeNull();
+      store.forfeitPlayer(id, "a", "goons");
+      expect(store.droppedSinceLastGame(id)).toBe("a");
+    });
+
+    it("reopens a final the undone game had decided by forfeit", () => {
+      const id = startedTournament();
+      play(id); // a wins Semifinal 1
+      store.forfeitPlayer(id, "a", "goons");
+      play(id); // c wins Semifinal 2, and the final by forfeit
+      const outcome = store.undoLastGame(id)!;
+      expect(outcome).toMatchObject({ reopened: true, tournamentReopened: true, paused: null });
+      expect(outcome.unforfeited.map((m) => [m.label, m.status, m.winner_id, m.p1_id, m.p2_id])).toEqual([
+        ["Final", "pending", null, "a", null],
+      ]);
+      expect(store.getTournament(id)).toMatchObject({ status: "active", winner_id: null });
+      expect(live(id).label).toBe("Semifinal 2");
+    });
+
+    it("empties playoffs the undone game had filled and decided by forfeit", () => {
+      const id = startedGroups(6);
+      store.forfeitPlayer(id, "b", "goons");
+      store.forfeitPlayer(id, "c", "goons");
+      while (live(id).round === 1) play(id);
+      const outcome = store.undoLastGame(id)!;
+      expect(outcome.paused?.label).toBe("Semifinal 1");
+      expect(outcome.unforfeited.map((m) => [m.label, m.status, m.p1_id])).toEqual([["Semifinal 2", "pending", null]]);
+      for (const label of ["Semifinal 1", "Semifinal 2"]) {
+        expect(byLabel(id, label)).toMatchObject({ p1_id: null, p2_id: null, status: "pending", winner_id: null });
+      }
+      expect(byLabel(id, "Final").p2_id).toBeNull();
+    });
+
+    it("leaves forfeits from before the undone game alone", () => {
+      const id = startedRoundRobin();
+      store.forfeitPlayer(id, "e", "goons");
+      play(id);
+      expect(store.undoLastGame(id)!.unforfeited).toEqual([]);
+      expect(store.listMatches(id).filter(forfeited)).toHaveLength(4);
+    });
+  });
+
+  it("leaves forfeit wins out of stats", () => {
+    const id = startedTournament({ semis: 3, final: 3 });
+    store.recordGame(live(id), 2, 1, "r", "goons"); // a leads b 1–0, then drops
+    store.forfeitPlayer(id, "a", "goons");
+    play(id);
+    play(id); // c beats d 2–0
+    expect(store.decidedMatches("guild-1").map((m) => [m.p1, m.p2, m.winner])).toEqual([["c", "d", "c"]]);
+    expect(store.getTournament(id)!.status).toBe("active"); // the final, b vs c, is live
   });
 });
