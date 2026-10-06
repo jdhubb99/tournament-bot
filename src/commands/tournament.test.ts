@@ -5,6 +5,8 @@ import {
   getLiveMatch,
   getOpenTournament,
   getTournament,
+  droppedPlayers,
+  forfeitPlayer,
   listGames,
   listMatches,
   listTournamentPlayers,
@@ -17,7 +19,9 @@ import {
   fakeInteraction,
   resetDb,
   sentStartingWith,
+  playToTheEnd,
   startedEight,
+  startedGroups,
   startedRoundRobin,
   startedTournament,
 } from "../test/helpers.ts";
@@ -360,5 +364,109 @@ describe("/tournament series", () => {
     );
     expect(getLiveMatch(id)).toMatchObject({ label: "Semifinal 1", best_of: 3 });
     expect(listGames(getLiveMatch(id)!.id)).toHaveLength(1);
+  });
+});
+
+describe("/tournament forfeit", () => {
+  async function ask(player: string) {
+    const interaction = fakeInteraction({ subcommand: "forfeit", optionUsers: { player: { id: player, name: player } } });
+    await tournament.execute(cast(interaction));
+    return arg(interaction.reply);
+  }
+  async function answer(action: "forfeit" | "stay", id: number, player: string) {
+    const interaction = fakeInteraction({ kind: "button", customId: `tournament:${action}:${id}:${player}`, user: { id: "boss", name: "Boss" } });
+    await tournament.button!(cast(interaction), [action, String(id), player]);
+    return arg(interaction.update);
+  }
+
+  it("refuses when there's nothing to forfeit", async () => {
+    expect((await ask("a")).content).toBe("No tournament is running.");
+    await startSignup();
+    expect((await ask("a")).content).toBe("The tournament hasn't started yet, so there's nothing to forfeit.");
+  });
+
+  it("refuses a player who isn't in it, has dropped, or is already out", async () => {
+    const id = startedTournament();
+    expect((await ask("zed")).content).toBe("<@zed> isn't in this tournament.");
+    recordGame(getLiveMatch(id)!, 3, 1, "r", "goons"); // B is out
+    expect((await ask("b")).content).toBe("<@b> is already out of the tournament.");
+    forfeitPlayer(id, "a", "goons");
+    const refused = await ask("a");
+    expect(refused).toMatchObject({ content: "<@a> has already dropped out.", flags: expect.any(Number) });
+  });
+
+  it("asks privately first, saying who wins the live match", async () => {
+    const id = startedTournament();
+    const message = await ask("b");
+    expect(message.content).toBe(
+      "Drop <@b> from the tournament? They forfeit every match they have left. They're in the live match (Semifinal 1), so <@a> wins it now. This can't be undone.",
+    );
+    expect(message.flags).toBeDefined();
+    expect(message.components[0].toJSON().components.map((b: { custom_id: string }) => b.custom_id)).toEqual([
+      `tournament:forfeit:${id}:b`,
+      `tournament:stay:${id}:b`,
+    ]);
+    expect((await ask("a")).content).toContain("so <@b> wins it now.");
+    expect((await ask("c")).content).toBe(
+      "Drop <@c> from the tournament? They forfeit every match they have left. This can't be undone.",
+    );
+    expect(droppedPlayers(id).size).toBe(0);
+  });
+
+  it("keeps the player in when asked to", async () => {
+    const id = startedTournament();
+    expect(await answer("stay", id, "b")).toEqual({ content: "Okay, <@b> stays in.", components: [] });
+    expect(droppedPlayers(id).size).toBe(0);
+  });
+
+  it("drops the player, posts the forfeit, refreshes the bracket and announces the next match", async () => {
+    const id = startedTournament();
+    expect(await answer("forfeit", id, "a")).toEqual({ content: "Dropped.", components: [] });
+    expect(droppedPlayers(id)).toEqual(new Set(["a"]));
+    expect(sentStartingWith(channel, "🏳️")[0]).toEqual({
+      content: "🏳️ <@a> dropped out of the tournament (by <@boss>).\nSemifinal 1: **B** def. A (forfeit)",
+      allowedMentions: { parse: [] },
+    });
+    expect(getTournament(id)?.bracket_msg_id).toBe("msg-2");
+    expect(sentStartingWith(channel, "Up next: ")[0].content).toBe("Up next: <@c> vs <@d> (Bo1)");
+  });
+
+  it("just posts the drop when nothing is decided yet", async () => {
+    const id = startedTournament();
+    recordGame(getLiveMatch(id)!, 3, 1, "r", "goons"); // A waits in the final
+    await answer("forfeit", id, "a");
+    expect(sentStartingWith(channel, "🏳️")[0].content).toBe("🏳️ <@a> dropped out of the tournament (by <@boss>).");
+    expect(sentStartingWith(channel, "Up next: ")).toHaveLength(0);
+  });
+
+  it("announces the end of a group stage the forfeit finished", async () => {
+    const id = startedGroups(6); // Group A: a, b, c. Group B: d, e, f
+    while (getLiveMatch(id)!.label !== "Group B - Match 3") {
+      const m = getLiveMatch(id)!;
+      recordGame(m, m.p1_id! < m.p2_id! ? 2 : 1, m.p1_id! < m.p2_id! ? 1 : 2, "r", "goons");
+    }
+    const last = getLiveMatch(id)!;
+    await answer("forfeit", id, last.p2_id!);
+    expect(sentStartingWith(channel, "📊 The group stage is done!")).toHaveLength(1);
+    expect(sentStartingWith(channel, "Up next: ")[0].content).toStartWith("Up next: ");
+  });
+
+  it("crowns the champion when the forfeit ends the tournament", async () => {
+    const id = startedTournament();
+    recordGame(getLiveMatch(id)!, 3, 1, "r", "goons");
+    recordGame(getLiveMatch(id)!, 3, 1, "r", "goons"); // final: A vs C is live
+    await answer("forfeit", id, "c");
+    expect(sentStartingWith(channel, "🏆")[0].content).toBe("🏆 <@a> wins the tournament!");
+    expect(getTournament(id)).toMatchObject({ status: "done", winner_id: "a" });
+  });
+
+  it("checks again when confirmed, in case the tournament moved on", async () => {
+    const id = startedTournament();
+    playToTheEnd(id);
+    expect(await answer("forfeit", id, "a")).toEqual({ content: "No tournament is running.", components: [] });
+    const other = startedEight();
+    forfeitPlayer(other, "a", "goons");
+    expect(await answer("forfeit", other, "a")).toEqual({ content: "<@a> has already dropped out.", components: [] });
+    expect(await answer("forfeit", 999, "a")).toEqual({ content: "No tournament is running.", components: [] });
   });
 });

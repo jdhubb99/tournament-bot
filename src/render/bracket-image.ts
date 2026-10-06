@@ -17,6 +17,8 @@ export interface BracketSlot {
   /** Goals for a best of 1 (drawn as a number), games won for longer series (drawn as dots); null before anything is reported. */
   score: number | null;
   won: boolean;
+  /** True for the player who forfeited a match: drawn as "FF" in place of a score. */
+  forfeited: boolean;
 }
 
 export interface BracketMatch {
@@ -98,7 +100,9 @@ function row(slot: BracketSlot, bestOf: number, x: number, y: number, id: string
   const fill = decided && !slot.won ? MUTED : TEXT;
   parts.push(text(x + 18 + AVATAR_R * 2 + 12, mid + 9, truncate(slot.name, 16), { size: 26, fill }));
   // Goals are numbers; games won in a longer series are dots, so the two can't be confused.
-  if (bestOf > 1) {
+  if (slot.forfeited) {
+    parts.push(text(x + CARD_W - 16, mid + 10, "FF", { size: 28, fill: MUTED, anchor: "end" }));
+  } else if (bestOf > 1) {
     parts.push(pips(x + CARD_W - 20, mid, winsNeeded(bestOf), slot.score ?? 0, slot.team ? TEAMS[slot.team].color : TEXT));
   } else if (slot.score !== null) {
     parts.push(text(x + CARD_W - 16, mid + 10, String(slot.score), { size: 28, fill, anchor: "end" }));

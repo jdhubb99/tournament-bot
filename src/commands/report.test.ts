@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { useTournamentChannel } from "../channel.ts";
 import { db } from "../db.ts";
-import { createTournament, getLiveMatch, getTournament, listGames } from "../store.ts";
+import { createTournament, forfeitPlayer, getLiveMatch, getTournament, listGames } from "../store.ts";
 import {
   arg,
   cast,
@@ -123,6 +123,17 @@ describe("/report results", () => {
     expect(bracketMessage.edit).toHaveBeenCalledTimes(4);
     expect(getTournament(id)).toMatchObject({ status: "done", winner_id: "d" });
     expect(errorOf(await send("d", 1, 0))).toBe("There's no live match to report right now.");
+  });
+
+  it("posts the forfeits a result sets off, before crowning the champion", async () => {
+    const id = startedTournament({ semis: 1, final: 3 });
+    await send("a", 3, 1); // A wins Semifinal 1
+    forfeitPlayer(id, "a", "goons");
+    await send("d", 2, 0); // D wins Semifinal 2, then the final by forfeit
+    const [forfeit] = sentStartingWith(channel, "🏳️");
+    expect(forfeit).toEqual({ content: "🏳️ Final: **D** def. A (forfeit)", allowedMentions: { parse: [] } });
+    expect(sentStartingWith(channel, "🏆")[0].content).toBe("🏆 <@d> wins the tournament!");
+    expect(getTournament(id)).toMatchObject({ status: "done", winner_id: "d" });
   });
 
   it("says there's no live match while an active tournament has none", async () => {

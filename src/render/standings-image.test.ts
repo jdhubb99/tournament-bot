@@ -16,6 +16,7 @@ const row = (name: string, wins: number, losses: number, goalsFor: number, goals
   losses,
   goalsFor,
   goalsAgainst,
+  dropped: false,
 });
 const rows = [row("A", 4, 0, 8, 2), row("B", 3, 1, 6, 4), row("C", 2, 2, 5, 5), row("D", 1, 3, 3, 6), row("E", 0, 4, 2, 7)];
 const slot = (name: string | null, extra: Partial<BracketSlot> = {}): BracketSlot => ({
@@ -26,6 +27,7 @@ const slot = (name: string | null, extra: Partial<BracketSlot> = {}): BracketSlo
   seed: null,
   score: null,
   won: false,
+  forfeited: false,
   ...extra,
 });
 const emptyFinal: BracketMatch = { label: "Final", bestOf: 3, status: "pending", p1: slot(null), p2: slot(null) };
@@ -105,6 +107,12 @@ describe("layoutTable highlights", () => {
   it("leaves out the cutoff line when asked", () => {
     const { svg } = layoutTable(0, 0, "T", rows, "t", columns, { colors: ["#aaaaaa", "#bbbbbb", "#cccccc"], cutoff: false });
     expect([/#aaaaaa/g, /#bbbbbb/g, /#cccccc/g].map((re) => svg.match(re)?.length)).toEqual([3, 3, 3]);
+  });
+
+  it("dims the names of players who dropped", () => {
+    const dropped = rows.map((r, i) => ({ ...r, dropped: i === 4 }));
+    const plain = layoutTable(0, 0, "T", rows, "t", columns, { colors: [], cutoff: false }).svg;
+    expect(layoutTable(0, 0, "T", dropped, "t", columns, { colors: [], cutoff: false }).svg).not.toBe(plain);
   });
 
   it("can hide the rank numbers", () => {

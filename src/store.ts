@@ -2,6 +2,7 @@
 // interleaving with other interactions; multi-step writes use transactions.
 import { db } from "./db.ts";
 import type { PlannedMatch, SeriesLengths } from "./logic/bracket.ts";
+import { droppedLast, nextForfeit, wonByForfeit } from "./logic/forfeit.ts";
 import type { Format } from "./logic/format.ts";
 import { semifinalPairs, type GroupLabel } from "./logic/groups.ts";
 import { allMatchesDone, nextMatchToPlay } from "./logic/queue.ts";
@@ -209,26 +210,78 @@ export function listGames(matchId: number): Game[] {
     .all({ m: matchId });
 }
 
-export interface GameOutcome {
+/** What happened after a match was decided (by a game or a forfeit). */
+export interface Settled {
+  /** The match that went live next, if any. */
+  next: Match | null;
+  /** Set when the tournament just finished. */
+  championId: string | null;
+  /**
+   * True when a round-robin league or a group stage just finished, so the playoffs were
+   * filled from the standings (the final, or both semis).
+   */
+  stageFinished: boolean;
+  /** Matches just decided by forfeit because a player in them had dropped, in the order decided. */
+  forfeits: Match[];
+}
+
+export interface GameOutcome extends Settled {
   game: Game;
   /** The reported match, re-read after any update (status/winner). */
   match: Match;
   series: SeriesState;
-  /** The match that went live because this game decided the series, if any. */
-  next: Match | null;
-  /** Set when this game decided the final match of the tournament. */
-  championId: string | null;
-  /**
-   * True when this game finished a round-robin league or a group stage, so the playoffs
-   * were just filled from the standings (the final, or both semis).
-   */
-  stageFinished: boolean;
+}
+
+/** Closes a match with its winner and moves the winner into the next match, if one is linked. */
+function decide(match: Match, winnerId: string): void {
+  db.query("UPDATE matches SET status = 'done', winner_id = $w WHERE id = $id").run({ w: winnerId, id: match.id });
+  if (match.next_match_id) {
+    const column = match.next_slot === "p1" ? "p1_id" : "p2_id";
+    db.query(`UPDATE matches SET ${column} = $w WHERE id = $id`).run({ w: winnerId, id: match.next_match_id });
+  }
 }
 
 /**
- * Saves one game of the live match. If it decides the series, closes the match,
- * advances the winner (single elim), and then either puts the next playable match
- * live with p1 on `nextP1Team` or, when every match is done, finishes the tournament.
+ * Carries a tournament on after a match is decided: fills the playoffs once the league or
+ * group stage is done, decides every match a dropped player can't play (which can fill more
+ * slots in turn), and then, unless a match is still live, puts the next playable match live
+ * with p1 on `nextP1Team`, or finishes the tournament when every match is done.
+ */
+function settle(tournamentId: number, nextP1Team: Team): Settled {
+  const dropped = droppedPlayers(tournamentId);
+  let stageFinished = false;
+  const forfeitIds: number[] = [];
+  for (;;) {
+    if (fillPlayoffsFromStandings(tournamentId)) stageFinished = true;
+    const forfeit = nextForfeit(listMatches(tournamentId), dropped);
+    if (!forfeit) break;
+    decide(forfeit.match, forfeit.winnerId);
+    forfeitIds.push(forfeit.match.id);
+  }
+
+  let next: Match | null = null;
+  let championId: string | null = null;
+  const matches = listMatches(tournamentId);
+  if (!matches.some((m) => m.status === "live")) {
+    const upNext = nextMatchToPlay(matches);
+    if (upNext) {
+      goLive(upNext.id, nextP1Team);
+      next = getMatch(upNext.id);
+    } else if (allMatchesDone(matches)) {
+      championId = matches.at(-1)!.winner_id!;
+      db.query(
+        "UPDATE tournaments SET status = 'done', winner_id = $w, finished_at = datetime('now') WHERE id = $id",
+      ).run({ w: championId, id: tournamentId });
+    }
+  }
+  return { next, championId, stageFinished, forfeits: forfeitIds.map((id) => getMatch(id)!) };
+}
+
+/**
+ * Saves one game of the live match. If it decides the series, closes the match, advances
+ * the winner (single elim), and settles the tournament: any forfeits that follows from,
+ * then either the next playable match goes live with p1 on `nextP1Team` or, when every
+ * match is done, the tournament finishes.
  */
 export const recordGame = db.transaction(
   (match: Match, p1Score: number, p2Score: number, reportedBy: string, nextP1Team: Team): GameOutcome => {
@@ -244,37 +297,57 @@ export const recordGame = db.transaction(
     const game = db.query<Game, { id: number }>("SELECT * FROM games WHERE id = $id").get({ id: gameId })!;
     const series = seriesState(listGames(match.id), match.best_of);
 
-    let next: Match | null = null;
-    let championId: string | null = null;
-    let stageFinished = false;
+    let settled: Settled = { next: null, championId: null, stageFinished: false, forfeits: [] };
     if (series.winner) {
-      const winnerId = series.winner === "p1" ? match.p1_id! : match.p2_id!;
-      db.query("UPDATE matches SET status = 'done', winner_id = $w WHERE id = $id").run({ w: winnerId, id: match.id });
-      if (match.next_match_id) {
-        const column = match.next_slot === "p1" ? "p1_id" : "p2_id";
-        db.query(`UPDATE matches SET ${column} = $w WHERE id = $id`).run({ w: winnerId, id: match.next_match_id });
-      }
-
-      stageFinished = fillPlayoffsFromStandings(match.tournament_id);
-      const matches = listMatches(match.tournament_id);
-      const upNext = nextMatchToPlay(matches);
-      if (upNext) {
-        goLive(upNext.id, nextP1Team);
-        next = getMatch(upNext.id);
-      } else if (allMatchesDone(matches)) {
-        championId = winnerId;
-        db.query(
-          "UPDATE tournaments SET status = 'done', winner_id = $w, finished_at = datetime('now') WHERE id = $id",
-        ).run({ w: winnerId, id: match.tournament_id });
-      }
+      decide(match, series.winner === "p1" ? match.p1_id! : match.p2_id!);
+      settled = settle(match.tournament_id, nextP1Team);
     }
-
-    return { game, match: getMatch(match.id)!, series, next, championId, stageFinished };
+    return { game, match: getMatch(match.id)!, series, ...settled };
   },
 );
 
 export function getMatch(id: number): Match | null {
   return db.query<Match, { id: number }>("SELECT * FROM matches WHERE id = $id").get({ id });
+}
+
+/** Players who have dropped out of the tournament with /tournament forfeit. */
+export function droppedPlayers(tournamentId: number): Set<string> {
+  const rows = db
+    .query<{ player_id: string }, { t: number }>(
+      "SELECT player_id FROM tournament_players WHERE tournament_id = $t AND dropped_after_game IS NOT NULL",
+    )
+    .all({ t: tournamentId });
+  return new Set(rows.map((r) => r.player_id));
+}
+
+/**
+ * Drops a player from an active tournament: they forfeit the live match if they're in it
+ * (its games stay as they were), and every other match they have left as soon as both its
+ * players are known. Then the tournament settles like after any decided match. Callers
+ * check first that the player is still in it.
+ */
+export const forfeitPlayer = db.transaction((tournamentId: number, playerId: string, nextP1Team: Team): Settled => {
+  db.query("UPDATE tournament_players SET dropped_after_game = $g WHERE tournament_id = $t AND player_id = $p").run({
+    g: getLastGame(tournamentId)?.id ?? 0,
+    t: tournamentId,
+    p: playerId,
+  });
+  const live = getLiveMatch(tournamentId);
+  const inLive = live !== null && (live.p1_id === playerId || live.p2_id === playerId);
+  if (inLive) decide(live, live.p1_id === playerId ? live.p2_id! : live.p1_id!);
+  const settled = settle(tournamentId, nextP1Team);
+  return inLive ? { ...settled, forfeits: [getMatch(live.id)!, ...settled.forfeits] } : settled;
+});
+
+/** The player who dropped after the tournament's newest game, if any. /undo can't go back past them. */
+export function droppedSinceLastGame(tournamentId: number): string | null {
+  const row = db
+    .query<{ player_id: string }, { t: number; g: number }>(
+      `SELECT player_id FROM tournament_players WHERE tournament_id = $t AND dropped_after_game >= $g
+       ORDER BY dropped_after_game DESC LIMIT 1`,
+    )
+    .get({ t: tournamentId, g: getLastGame(tournamentId)?.id ?? 0 });
+  return row?.player_id ?? null;
 }
 
 /**
@@ -308,13 +381,32 @@ export interface UndoOutcome {
   paused: Match | null;
   /** True if the undone game had ended the tournament. */
   tournamentReopened: boolean;
+  /** Matches the undone game had decided by forfeit, now waiting again (re-read). */
+  unforfeited: Match[];
+}
+
+/**
+ * Takes a decided match's winner back out of the next match. If the next match had then been
+ * decided by forfeit (its winner was only known because of this one), it's reopened too, and
+ * so on down the bracket. Returns the matches reopened that way.
+ */
+function retract(match: Match): Match[] {
+  if (!match.next_match_id) return [];
+  const column = match.next_slot === "p1" ? "p1_id" : "p2_id";
+  db.query(`UPDATE matches SET ${column} = NULL WHERE id = $id`).run({ id: match.next_match_id });
+  const next = getMatch(match.next_match_id)!;
+  if (next.status !== "done") return [];
+  db.query("UPDATE matches SET status = 'pending', winner_id = NULL WHERE id = $id").run({ id: next.id });
+  return [next, ...retract(next)];
 }
 
 /**
  * Removes the tournament's most recent game and reverses everything it caused: reopens
- * the match it closed, takes the winner back out of the next match, puts any match that
- * went live afterwards back to waiting (it has no games, since this game was the latest),
- * and reopens the tournament if this game had ended it. Returns null if there's no game.
+ * the match it closed, takes the winner back out of the next match, reopens any match it
+ * then decided by forfeit, puts any match that went live afterwards back to waiting (it has
+ * no games, since this game was the latest), and reopens the tournament if this game had
+ * ended it. Returns null if there's no game. Callers check `droppedSinceLastGame()` first,
+ * since a forfeit after the game can't be undone.
  */
 export const undoLastGame = db.transaction((tournamentId: number): UndoOutcome | null => {
   const game = getLastGame(tournamentId);
@@ -323,6 +415,7 @@ export const undoLastGame = db.transaction((tournamentId: number): UndoOutcome |
 
   let paused: Match | null = null;
   let tournamentReopened = false;
+  const unforfeited: Match[] = [];
   const reopened = match.status === "done";
   if (reopened) {
     const live = getLiveMatch(tournamentId);
@@ -330,15 +423,16 @@ export const undoLastGame = db.transaction((tournamentId: number): UndoOutcome |
       db.query("UPDATE matches SET status = 'pending', p1_team = NULL WHERE id = $id").run({ id: live.id });
       paused = getMatch(live.id);
     }
-    if (match.next_match_id) {
-      const column = match.next_slot === "p1" ? "p1_id" : "p2_id";
-      db.query(`UPDATE matches SET ${column} = NULL WHERE id = $id`).run({ id: match.next_match_id });
-    }
+    unforfeited.push(...retract(match));
     // Reopening a league or group match means that stage isn't over, so empty the playoffs
-    // it had filled from the standings (the round-robin final, or both semis).
+    // it had filled from the standings (the round-robin final, or both semis), reopening
+    // any of them it had decided by forfeit.
     if (match.round === 1) {
       for (const playoff of standingsFilledMatches(tournamentId)) {
-        db.query("UPDATE matches SET p1_id = NULL, p2_id = NULL WHERE id = $id").run({ id: playoff.id });
+        if (playoff.status === "done") unforfeited.push(playoff, ...retract(playoff));
+        db.query("UPDATE matches SET p1_id = NULL, p2_id = NULL, status = 'pending', winner_id = NULL WHERE id = $id").run({
+          id: playoff.id,
+        });
       }
     }
     db.query("UPDATE matches SET status = 'live', winner_id = NULL WHERE id = $id").run({ id: match.id });
@@ -361,6 +455,7 @@ export const undoLastGame = db.transaction((tournamentId: number): UndoOutcome |
     reopened,
     paused,
     tournamentReopened,
+    unforfeited: unforfeited.map((m) => getMatch(m.id)!),
   };
 });
 
@@ -397,13 +492,16 @@ function standingsFilledMatches(tournamentId: number): Match[] {
   return [];
 }
 
-/** The table for some players, from every decided stage match between them. Players are in seed order. */
+/**
+ * The table for some players, from every decided stage match between them, with anyone who
+ * dropped at the bottom. Players are in seed order.
+ */
 function tableFor(tournamentId: number, players: readonly string[]): StandingRow[] {
   const inTable = new Set(players);
   const results = stageMatches(tournamentId)
     .filter((m) => m.status === "done" && inTable.has(m.p1_id!) && inTable.has(m.p2_id!))
     .map((m) => ({ p1: m.p1_id!, p2: m.p2_id!, winner: m.winner_id!, games: listGames(m.id) }));
-  return standings(players, results);
+  return droppedLast(standings(players, results), droppedPlayers(tournamentId));
 }
 
 /** The round-robin league table, from every decided league match. */
@@ -449,7 +547,7 @@ export const DEFAULT_GAME = "Rocket League";
 /**
  * Every decided match in the guild's finished or in-progress tournaments of a game
  * (case-insensitive), with its games, for /leaderboard and /stats. Cancelled tournaments
- * don't count.
+ * and matches won by forfeit don't count.
  */
 export function decidedMatches(guildId: string, game = DEFAULT_GAME): MatchRecord[] {
   return db
@@ -459,7 +557,9 @@ export function decidedMatches(guildId: string, game = DEFAULT_GAME): MatchRecor
        ORDER BY m.id`,
     )
     .all({ g: guildId, game })
-    .map((m) => ({ p1: m.p1_id!, p2: m.p2_id!, winner: m.winner_id!, games: listGames(m.id) }));
+    .map((m) => ({ match: m, games: listGames(m.id) }))
+    .filter(({ match, games }) => !wonByForfeit(match, games))
+    .map(({ match, games }) => ({ p1: match.p1_id!, p2: match.p2_id!, winner: match.winner_id!, games }));
 }
 
 /** Titles per player: finished tournaments of a game (case-insensitive) each player won. */
